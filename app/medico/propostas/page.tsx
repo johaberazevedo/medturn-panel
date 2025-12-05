@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 // --- Tipagens ---
 type SwapRequest = {
   id: number;
+  from_shift_id: number; // <--- ADICIONADO PARA CORRIGIR O ERRO
   status: 'pendente' | 'approved' | 'rejeitado' | 'cancelado';
   reason: string | null;
   created_at: string;
@@ -137,9 +138,7 @@ function PropostasContent() {
           .eq('id', id);
         if (reqError) throw reqError;
 
-        // B. Efetiva a troca no plantão original (Se tiver permissão RLS, senão precisa de admin)
-        // Tentamos fazer direto. Se falhar por RLS, o admin teria que aprovar.
-        // Assumindo lógica "Self-Service":
+        // B. Efetiva a troca no plantão original
         if (requestData.from_shift_id) {
              const { error: shiftError } = await supabase
             .from('shifts')
