@@ -43,9 +43,17 @@ export default function MedicoHomePage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b px-6 py-4 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-800">Portal do Médico</h1>
-        <p className="text-xs text-slate-500">Bem-vindo, {userName}</p>
+      <header className="bg-white border-b px-6 py-4 shadow-sm flex justify-between items-center">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-800">Portal do Médico</h1>
+          <p className="text-xs text-slate-500">Bem-vindo, {userName}</p>
+        </div>
+        <button 
+          onClick={() => router.push('/perfil')}
+          className="text-xs font-medium px-3 py-1.5 border rounded-lg hover:bg-slate-50 transition"
+        >
+          👤 Meu Perfil
+        </button>
       </header>
 
       <main className="p-6 max-w-md mx-auto space-y-4">
@@ -57,10 +65,17 @@ export default function MedicoHomePage() {
         />
 
         <MenuCard 
-          title="Minha Disponibilidade" 
+          title="Trocas e Disponibilidade" 
           desc="Informe os dias que pode trabalhar e solicite trocas."
           icon="✅"
           onClick={() => router.push('/medico/disponibilidade')}
+        />
+
+<MenuCard 
+          title="Solicitações e Propostas" 
+          desc="Veja solicitações recebidas e o status das suas." 
+          icon="🤝" 
+          onClick={() => router.push('/medico/propostas')}
         />
 
         <MenuCard 

@@ -209,12 +209,20 @@ export default function MedicosPage() {
             </p>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="text-xs px-3 py-1.5 border rounded-lg hover:bg-slate-50 transition"
-          >
-            Sair
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => router.push('/perfil')}
+              className="text-xs px-3 py-1.5 border rounded-lg hover:bg-slate-50 transition bg-white text-slate-700"
+            >
+              Meu Perfil
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-xs px-3 py-1.5 border rounded-lg hover:bg-red-50 transition bg-white text-red-600 border-red-200"
+            >
+              Sair
+            </button>
+          </div>
         </div>
 
         {/* Navegação principal */}
