@@ -3,6 +3,8 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+// Importamos a Server Action
+import { registerUser } from '@/app/actions/register';
 
 type Membership = {
   hospital_id: string;
@@ -30,11 +32,9 @@ export default function MedicosPage() {
   const [error, setError] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
 
+  // Estados do Formulário de Cadastro
   const [showForm, setShowForm] = useState(false);
-  const [newDoctorEmail, setNewDoctorEmail] = useState('');
-  const [newDoctorName, setNewDoctorName] = useState('');
-  const [newDoctorRole, setNewDoctorRole] = useState<'admin' | 'doctor' | 'coordenador'>('doctor');
-  const [savingDoctor, setSavingDoctor] = useState(false);
+  const [isPending, setIsPending] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const [savingChangeId, setSavingChangeId] = useState<number | null>(null);
@@ -50,12 +50,11 @@ export default function MedicosPage() {
     if (doctorsError) {
       setError('Não foi possível carregar a lista de médicos.');
     } else if (doctorsData) {
-      // Correção: Trata o array 'users' que vem do Supabase
+      // Correção de tipagem (Array -> Objeto)
       const formatted = doctorsData.map((d: any) => ({
         ...d,
         users: Array.isArray(d.users) ? d.users[0] : d.users
       }));
-      
       setDoctors(formatted as DoctorRow[]);
     }
   }
@@ -92,7 +91,7 @@ export default function MedicosPage() {
         return;
       }
 
-      // Correção: Trata o array 'hospitals'
+      // Correção de tipagem (Membership)
       const raw = membership as any;
       const hospData = raw.hospitals;
       const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
@@ -112,77 +111,29 @@ export default function MedicosPage() {
     router.push('/login');
   }
 
-  async function handleAddDoctor(e: FormEvent) {
-    e.preventDefault();
+  // Nova função de submit usando Server Action
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsPending(true);
     setError(null);
     setActionMessage(null);
 
-    if (!hospitalId) {
-      setError('Hospital não identificado. Recarregue a página.');
-      return;
+    const formData = new FormData(event.currentTarget);
+    if (hospitalId) {
+      formData.append('hospitalId', hospitalId);
     }
 
-    if (!newDoctorEmail.trim()) {
-      setError('Informe o e-mail do médico.');
-      return;
-    }
+    const result = await registerUser(formData);
 
-    setSavingDoctor(true);
-
-    try {
-      const { data: userRow, error: userLookupError } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .eq('email', newDoctorEmail.trim())
-        .maybeSingle();
-
-      if (userLookupError) {
-        setError('Erro ao buscar usuário. Tente novamente.');
-        setSavingDoctor(false);
-        return;
-      }
-
-      if (!userRow) {
-        setError('Usuário não encontrado. Crie o médico em Authentication → Users antes de vinculá-lo.');
-        setSavingDoctor(false);
-        return;
-      }
-
-      const userId = (userRow as any).id as string;
-
-      if (newDoctorName.trim().length > 0) {
-        await supabase
-          .from('users')
-          .update({ full_name: newDoctorName.trim() })
-          .eq('id', userId);
-      }
-
-      const { error: insertError } = await supabase.from('hospital_users').insert({
-        hospital_id: hospitalId,
-        user_id: userId,
-        role: newDoctorRole,
-      });
-
-      if (insertError) {
-        if (insertError.message?.includes('duplicate key value')) {
-          setError('Esse médico já está vinculado a este hospital.');
-        } else {
-          setError('Não foi possível vincular o médico. Verifique as permissões / RLS.');
-        }
-        setSavingDoctor(false);
-        return;
-      }
-
-      await reloadDoctors(hospitalId);
-
-      setActionMessage('Médico vinculado com sucesso.');
-      setNewDoctorEmail('');
-      setNewDoctorName('');
-      setNewDoctorRole('doctor');
+    if (result.error) {
+      setError(result.error);
+    } else {
+      setActionMessage('Médico cadastrado e vinculado com sucesso!');
       setShowForm(false);
-    } finally {
-      setSavingDoctor(false);
+      // Recarrega a lista para mostrar o novo médico
+      if (hospitalId) await reloadDoctors(hospitalId);
     }
+    setIsPending(false);
   }
 
   async function handleChangeRole(doctorId: number, newRole: DoctorRow['role']) {
@@ -212,7 +163,7 @@ export default function MedicosPage() {
   async function handleRemoveDoctor(doctorId: number) {
     if (!hospitalId) return;
     const confirmDelete = window.confirm(
-      'Remover este médico do hospital? Ele poderá ser vinculado novamente no futuro.'
+      'Remover este médico do hospital? Ele perderá acesso ao painel deste hospital.'
     );
     if (!confirmDelete) return;
 
@@ -314,71 +265,76 @@ export default function MedicosPage() {
               </button>
             </div>
 
+            {/* FORMULÁRIO BLINDADO */}
             {showForm && (
-              <form
-                onSubmit={handleAddDoctor}
-                className="mb-4 p-3 border rounded-lg bg-slate-50 space-y-3 text-xs"
-              >
+              <form onSubmit={onSubmit} className="mb-4 p-4 border rounded-lg bg-slate-50 space-y-3">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold text-sm">Cadastrar Novo Médico</h3>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowForm(false)} 
+                    className="text-[10px] text-slate-500 hover:text-slate-800"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div className="md:col-span-1">
-                    <label className="block mb-1 font-medium">E-mail do médico</label>
-                    <input
-                      type="email"
-                      className="w-full border rounded-lg px-2 py-1.5 text-xs"
-                      value={newDoctorEmail}
-                      onChange={(e) => setNewDoctorEmail(e.target.value)}
-                      required
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-slate-600">Nome Completo</label>
+                    <input 
+                      name="fullName" 
+                      required 
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
+                      placeholder="Ex: Dr. João Silva" 
                     />
                   </div>
-                  <div className="md:col-span-1">
-                    <label className="block mb-1 font-medium">Nome (opcional)</label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-lg px-2 py-1.5 text-xs"
-                      value={newDoctorName}
-                      onChange={(e) => setNewDoctorName(e.target.value)}
-                      placeholder="Como aparecerá na escala"
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-slate-600">E-mail de Acesso</label>
+                    <input 
+                      name="email" 
+                      type="email" 
+                      required 
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
+                      placeholder="medico@hospital.com" 
                     />
                   </div>
-                  <div className="md:col-span-1">
-                    <label className="block mb-1 font-medium">Papel</label>
-                    <select
-                      className="w-full border rounded-lg px-2 py-1.5 text-xs"
-                      value={newDoctorRole}
-                      onChange={(e) =>
-                        setNewDoctorRole(e.target.value as 'admin' | 'doctor' | 'coordenador')
-                      }
-                    >
-                      <option value="doctor">Médico</option>
-                      <option value="coordenador">Coordenador</option>
-                      <option value="admin">Administrador</option>
-                    </select>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-slate-600">Senha Provisória</label>
+                    <input 
+                      name="password" 
+                      type="text" 
+                      required 
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
+                      placeholder="Mínimo 6 caracteres" 
+                      minLength={6}
+                    />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 mt-2">
-                  <button
-                    type="submit"
-                    disabled={savingDoctor}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-60"
+                <div className="flex justify-end pt-2 items-center gap-3">
+                  <span className="text-[10px] text-slate-400">
+                    * O usuário será criado com perfil de <strong>Médico</strong>.
+                  </span>
+                  <button 
+                    type="submit" 
+                    disabled={isPending}
+                    className="bg-slate-900 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50 font-medium transition-colors"
                   >
-                    {savingDoctor ? 'Salvando...' : 'Vincular médico'}
+                    {isPending ? 'Criando cadastro...' : 'Cadastrar Médico'}
                   </button>
-                  <p className="text-[11px] text-slate-500">
-                    Antes, crie o médico em <span className="font-mono">Authentication → Users</span>.
-                  </p>
                 </div>
               </form>
             )}
 
             {error && (
-              <p className="text-xs text-red-600 mb-2">
+              <p className="text-xs text-red-600 mb-2 border border-red-100 bg-red-50 p-2 rounded">
                 {error}
               </p>
             )}
 
             {actionMessage && (
-              <p className="text-xs text-emerald-700 mb-2">
+              <p className="text-xs text-emerald-700 mb-2 border border-emerald-100 bg-emerald-50 p-2 rounded">
                 {actionMessage}
               </p>
             )}
@@ -437,7 +393,7 @@ export default function MedicosPage() {
                             disabled={removingId === doctor.id}
                             className="text-[11px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
                           >
-                            {removingId === doctor.id ? 'Removendo...' : 'Remover'}
+                            {removingId === doctor.id ? '...' : 'Remover'}
                           </button>
                         </td>
                       </tr>
@@ -450,16 +406,15 @@ export default function MedicosPage() {
 
           <section className="bg-white rounded-xl shadow-sm p-4 text-xs text-slate-600">
             <h3 className="text-sm font-semibold text-slate-800 mb-2">
-              Como este cadastro se conecta ao app
+              Dica de Gestão
             </h3>
             <ul className="list-disc list-inside space-y-1">
-              <li>O médico é criado primeiro em <strong>Authentication → Users</strong> no Supabase.</li>
               <li>
-                Aqui no painel, você vincula esse usuário ao hospital e define o papel
-                (admin / coordenador / médico).
+                Ao cadastrar um médico, ele já poderá fazer login imediatamente com a senha provisória.
               </li>
-              <li>Depois, no app iOS MedTurn, o médico entra com o e-mail e a senha cadastrados.</li>
-              <li>A escala mensal e os plantões serão filtrados por este vínculo.</li>
+              <li>
+                Você pode promover um médico a <strong>Administrador</strong> mudando o papel dele na tabela acima.
+              </li>
             </ul>
           </section>
         </div>
