@@ -24,8 +24,8 @@ type AvailabilityNotification = {
   users: {
     full_name: string | null;
     email: string | null;
-  } | null;
-};
+  }[] | null;
+};	
 
 type ShiftSwapNotification = {
   id: number;
