@@ -39,11 +39,11 @@ type ShiftSwapNotification = {
   requester?: {
     full_name: string | null;
     email: string | null;
-  } | null;
+  }[] | null;
   target?: {
     full_name: string | null;
     email: string | null;
-  } | null;
+  }[] | null;
   shift?: {
     date: string;
     period: 'manha' | 'tarde' | 'noite' | '24h';
@@ -52,7 +52,7 @@ type ShiftSwapNotification = {
       full_name: string | null;
       email: string | null;
     } | null;
-  } | null;
+  }[] | null;
 };
 
 export default function DashboardPage() {
@@ -384,13 +384,26 @@ export default function DashboardPage() {
                   {swapRequests.map((r) => (
                     <li key={r.id} className="border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50">
                         <div className="flex justify-between items-center">
-                           <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
-                           <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + statusChipClass(r.status)}>
-                             {statusLabel(r.status)}
-                           </span>
-                        </div>
-                        <div className="text-slate-600 mt-1">
-                            Pediu troca: <strong>{periodLabel(r.shift?.period as any)} {r.shift?.date ? formatDateBR(r.shift.date) : ''}</strong>
+                           <span className="font-medium truncate">
+  {r.requester?.[0]?.full_name ?? r.requester?.[0]?.email ?? 'Médico'}
+</span>
+<span
+  className={
+    'px-2 py-0.5 rounded-full border text-[10px] ' +
+    statusChipClass(r.status)
+  }
+>
+  {statusLabel(r.status)}
+</span>
+</div>
+
+<div className="text-slate-600 mt-1">
+  Pediu troca:{' '}
+  <strong>
+    {periodLabel((r.shift?.[0]?.period as any) ?? 'manha')}{' '}
+    {r.shift?.[0]?.date ? formatDateBR(r.shift[0].date) : ''}
+  </strong>
+</div>
                         </div>
                         <div className="flex justify-end mt-1">
                              <button 
