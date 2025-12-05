@@ -147,7 +147,15 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (!error) setNotifications((data ?? []) as AvailabilityNotification[]);
+      if (!error) {
+        // Correção: Se 'users' vier como array do Supabase, pegamos o primeiro item
+        const formattedData = (data ?? []).map((item: any) => ({
+          ...item,
+          users: Array.isArray(item.users) ? item.users[0] : item.users
+        }));
+        
+        setNotifications(formattedData as AvailabilityNotification[]);
+      }
     } catch (e) { console.error(e); }
     setNotifLoading(false);
 
@@ -172,7 +180,27 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (!error) setSwapRequests((data ?? []) as ShiftSwapNotification[]);
+      if (!error) {
+        // Correção: Transforma arrays em objetos para requester, target e shift
+        const formattedSwaps = (data ?? []).map((item: any) => {
+           // Se shift vier como array, pegamos o primeiro item
+           let shiftObj = Array.isArray(item.shift) ? item.shift[0] : item.shift;
+           
+           // Se dentro do shift, o doctor vier como array, arrumamos também
+           if (shiftObj && Array.isArray(shiftObj.doctor)) {
+             shiftObj = { ...shiftObj, doctor: shiftObj.doctor[0] };
+           }
+
+           return {
+             ...item,
+             requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
+             target: Array.isArray(item.target) ? item.target[0] : item.target,
+             shift: shiftObj
+           };
+        });
+        
+        setSwapRequests(formattedSwaps as ShiftSwapNotification[]);
+      }
     } catch (e) { console.error(e); }
     setSwapLoading(false);
   }, []);
@@ -196,7 +224,13 @@ export default function DashboardPage() {
         return;
       }
 
-      const m = membership as MembershipRow;
+      // Correção: Transforma arrays em objetos para hospitals e users
+      const raw = membership as any;
+      const m: MembershipRow = {
+        hospital_id: raw.hospital_id,
+        hospitals: Array.isArray(raw.hospitals) ? raw.hospitals[0] : raw.hospitals,
+        users: Array.isArray(raw.users) ? raw.users[0] : raw.users
+      };
       setHospitalId(m.hospital_id);
       setHospitalName(m.hospitals?.name ?? 'Hospital');
       setAdminName(m.users?.full_name ?? 'Administrador');

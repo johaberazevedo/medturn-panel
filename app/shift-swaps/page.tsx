@@ -187,7 +187,23 @@ export default function ShiftSwapsPage() {
         return;
       }
 
-      setSwaps((data ?? []) as ShiftSwapRow[]);
+      // Correção: Trata os arrays que o Supabase retorna para as relações
+      const formatted = (data ?? []).map((item: any) => {
+         // Trata o turno e o usuário do turno (médico atual)
+         let flatShift = Array.isArray(item.shift) ? item.shift[0] : item.shift;
+         if (flatShift && Array.isArray(flatShift.users)) {
+            flatShift = { ...flatShift, users: flatShift.users[0] };
+         }
+
+         return {
+           ...item,
+           requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
+           target: Array.isArray(item.target) ? item.target[0] : item.target,
+           shift: flatShift
+         };
+      });
+
+      setSwaps(formatted as ShiftSwapRow[]);
     } catch (err) {
       console.error(err);
       setErrorMsg('Erro inesperado ao carregar as solicitações de troca.');
@@ -263,7 +279,14 @@ export default function ShiftSwapsPage() {
         return;
       }
 
-      const m = membership as MembershipRow;
+      // Correção: Constrói 'm' tratando arrays do Supabase
+      const rawM = membership as any;
+      const m: MembershipRow = {
+        hospital_id: rawM.hospital_id,
+        role: rawM.role,
+        hospitals: Array.isArray(rawM.hospitals) ? rawM.hospitals[0] : rawM.hospitals,
+        users: Array.isArray(rawM.users) ? rawM.users[0] : rawM.users
+      };
 
       if (m.role !== 'admin') {
         setErrorMsg('Apenas administradores podem acessar a página de trocas de plantão.');

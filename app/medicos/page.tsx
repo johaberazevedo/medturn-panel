@@ -50,7 +50,13 @@ export default function MedicosPage() {
     if (doctorsError) {
       setError('Não foi possível carregar a lista de médicos.');
     } else if (doctorsData) {
-      setDoctors(doctorsData as DoctorRow[]);
+      // Correção: Trata o array 'users' que vem do Supabase
+      const formatted = doctorsData.map((d: any) => ({
+        ...d,
+        users: Array.isArray(d.users) ? d.users[0] : d.users
+      }));
+      
+      setDoctors(formatted as DoctorRow[]);
     }
   }
 
@@ -86,11 +92,15 @@ export default function MedicosPage() {
         return;
       }
 
-      const typedMembership = membership as Membership;
-      setHospitalId(typedMembership.hospital_id);
-      setHospitalName(typedMembership.hospitals?.name ?? 'Seu hospital');
+      // Correção: Trata o array 'hospitals'
+      const raw = membership as any;
+      const hospData = raw.hospitals;
+      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
 
-      await reloadDoctors(typedMembership.hospital_id);
+      setHospitalId(raw.hospital_id);
+      setHospitalName(realName ?? 'Seu hospital');
+
+      await reloadDoctors(raw.hospital_id);
       setLoading(false);
     }
 

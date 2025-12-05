@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 type DoctorOption = {
@@ -41,7 +41,7 @@ const PERIODS: {
   { key: '24h', label: '24h', maxDoctors: 6 },
 ];
 
-export default function EditarPlantaoPage() {
+function EditarPlantaoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -116,7 +116,11 @@ export default function EditarPlantaoPage() {
 
     const hospital_id = membership.hospital_id as string;
     setHospitalId(hospital_id);
-    setHospitalName(membership.hospitals?.name ?? 'Hospital');
+
+    // CORREÇÃO 1: Trata o array de hospitals para pegar o nome corretamente
+    const hospData = membership.hospitals as any;
+    const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
+    setHospitalName(realName ?? 'Hospital');
 
     const { data: rows, error } = await supabase
       .from('hospital_users')
@@ -128,14 +132,17 @@ export default function EditarPlantaoPage() {
       return hospital_id;
     }
 
-    const mapped: DoctorOption[] = (rows as HospitalUserRow[]).map((row) => ({
-      id: row.user_id,
-      name:
-        row.users?.full_name ??
-        row.users?.email ??
-        'Médico sem nome',
-      email: row.users?.email ?? null,
-    }));
+    // CORREÇÃO 2: Trata o array de users para mapear os médicos corretamente
+    const mapped: DoctorOption[] = (rows as any[]).map((row) => {
+      // Pega o objeto de usuário, seja array ou objeto
+      const userObj = Array.isArray(row.users) ? row.users[0] : row.users;
+      
+      return {
+        id: row.user_id,
+        name: userObj?.full_name ?? userObj?.email ?? 'Médico sem nome',
+        email: userObj?.email ?? null,
+      };
+    });
 
     mapped.sort((a, b) =>
       a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
@@ -775,5 +782,17 @@ export default function EditarPlantaoPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function EditarPlantaoPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+        <p className="text-sm text-slate-600">Carregando editor...</p>
+      </div>
+    }>
+      <EditarPlantaoContent />
+    </Suspense>
   );
 }

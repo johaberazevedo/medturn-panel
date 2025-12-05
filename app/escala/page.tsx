@@ -100,7 +100,13 @@ export default function EscalaMensalPage() {
       .order('date');
 
     if (!error && data) {
-      setShifts(data as ShiftRow[]);
+      // Correção: Se users vier como array, pegamos o primeiro item
+      const formattedShifts = data.map((shift: any) => ({
+        ...shift,
+        users: Array.isArray(shift.users) ? shift.users[0] : shift.users
+      }));
+      
+      setShifts(formattedShifts as ShiftRow[]);
     }
   }
 
@@ -153,11 +159,15 @@ export default function EscalaMensalPage() {
         return;
       }
 
-      const m = membership as Membership;
-      setHospitalId(m.hospital_id);
-      setHospitalName(m.hospitals?.name ?? 'Hospital');
+      // Correção preventiva para hospital
+      const rawM = membership as any;
+      const hospData = rawM.hospitals;
+      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
+      
+      setHospitalId(rawM.hospital_id);
+      setHospitalName(realName ?? 'Hospital');
 
-      await loadShifts(m.hospital_id, year, month);
+      await loadShifts(rawM.hospital_id, year, month);
       setLoading(false);
     }
 

@@ -118,11 +118,16 @@ export default function SwapRequestDetailPage() {
       .eq('hospital_id', hId);
 
     if (!error && data) {
-      const mapped = data.map((row: any) => ({
-        id: row.user_id,
-        name: row.users?.full_name ?? row.users?.email ?? 'Sem nome',
-        email: row.users?.email ?? null
-      })).sort((a, b) => a.name.localeCompare(b.name));
+      // Correção: Trata o array 'users'
+      const mapped = data.map((row: any) => {
+        const u = Array.isArray(row.users) ? row.users[0] : row.users;
+        return {
+          id: row.user_id,
+          name: u?.full_name ?? u?.email ?? 'Sem nome',
+          email: u?.email ?? null
+        };
+      }).sort((a, b) => a.name.localeCompare(b.name));
+      
       setDoctors(mapped);
     }
   }
@@ -147,8 +152,31 @@ export default function SwapRequestDetailPage() {
       setErrorMsg('Solicitação não encontrada.');
       return;
     }
-    setRequest(data as ShiftSwapDetail);
-    if (data.target_user_id) setSelectedDoctor(data.target_user_id);
+
+    // Correção: Normaliza os dados (remove arrays das relações)
+    const raw = data as any;
+    
+    // Helper para pegar primeiro item se for array
+    const unwrap = (val: any) => Array.isArray(val) ? val[0] : val;
+
+    const fixedData = {
+      ...raw,
+      requester: unwrap(raw.requester),
+      target: unwrap(raw.target),
+      shift: unwrap(raw.shift)
+    };
+
+    // Se tiver shift, precisa arrumar o doctor dentro dele também
+    if (fixedData.shift) {
+      fixedData.shift = {
+        ...fixedData.shift,
+        doctor: unwrap(fixedData.shift.doctor)
+      };
+    }
+
+    setRequest(fixedData as ShiftSwapDetail);
+    
+    if (fixedData.target_user_id) setSelectedDoctor(fixedData.target_user_id);
   }
 
   useEffect(() => {
@@ -171,12 +199,17 @@ export default function SwapRequestDetailPage() {
         return;
       }
 
-      setHospitalId(membership.hospital_id);
-      setHospitalName(membership.hospitals?.name ?? 'Hospital');
+      // Correção: Normaliza membership
+      const rawM = membership as any;
+      const hospData = rawM.hospitals;
+      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
+
+      setHospitalId(rawM.hospital_id);
+      setHospitalName(realName ?? 'Hospital');
 
       await Promise.all([
-        loadDetail(membership.hospital_id),
-        loadDoctors(membership.hospital_id)
+        loadDetail(rawM.hospital_id),
+        loadDoctors(rawM.hospital_id)
       ]);
       setLoading(false);
     }

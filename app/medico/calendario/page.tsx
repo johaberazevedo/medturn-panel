@@ -171,11 +171,15 @@ export default function MedicoCalendarioPage() {
         return;
       }
 
-      const m = membership as MembershipRow;
-      setHospitalId(m.hospital_id);
-      setHospitalName(m.hospitals?.name ?? 'Hospital');
+      // Correção: Trata o array que vem do Supabase (hospitals pode vir como lista)
+      const rawM = membership as any;
+      const hospData = rawM.hospitals;
+      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
 
-      await loadMonthData(m.hospital_id, user.id, year, month);
+      setHospitalId(rawM.hospital_id);
+      setHospitalName(realName ?? 'Hospital');
+
+      await loadMonthData(rawM.hospital_id, user.id, year, month);
       setLoading(false);
     }
     init();
