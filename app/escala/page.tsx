@@ -8,6 +8,7 @@ type ShiftRow = {
   id: number;
   date: string;
   period: 'manha' | 'tarde' | 'noite' | '24h';
+  is_chief: boolean; 
   users: { full_name: string | null } | null;
 };
 
@@ -16,7 +17,7 @@ type Membership = {
   hospitals: { name: string | null } | null;
 };
 
-// Config de capacidade por período (mesma lógica da tela de edição)
+// Config de capacidade por período
 const PERIOD_CONFIG: {
   key: 'manha' | 'tarde' | 'noite' | '24h';
   label: string;
@@ -48,6 +49,14 @@ export default function EscalaMensalPage() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
 
+  // Estilos dos cabeçalhos dos grupos
+  const groupStyles: Record<string, string> = {
+    manha: 'bg-green-100 text-green-800 border-green-200',
+    tarde: 'bg-blue-100 text-blue-800 border-blue-200',
+    noite: 'bg-purple-100 text-purple-800 border-purple-200',
+    '24h': 'bg-orange-100 text-orange-800 border-orange-200',
+  };
+
   const monthName = new Date(year, month).toLocaleDateString('pt-BR', {
     month: 'long',
   });
@@ -59,7 +68,7 @@ export default function EscalaMensalPage() {
     const matrix: (number | null)[][] = [];
     let week: (number | null)[] = [];
 
-    let weekdayOfFirst = first.getDay(); // 0 = domingo, 1 = segunda, ...
+    let weekdayOfFirst = first.getDay(); 
 
     // Preenche dias vazios antes do primeiro dia
     for (let i = 0; i < weekdayOfFirst; i++) {
@@ -84,23 +93,20 @@ export default function EscalaMensalPage() {
   }
 
   async function loadShifts(hId: string, y: number, m: number) {
-    // Monta as datas no formato YYYY-MM-DD para evitar problemas de fuso
     const monthStr = String(m + 1).padStart(2, '0');
-
     const monthStart = `${y}-${monthStr}-01`;
     const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
     const monthEnd = `${y}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
     const { data, error } = await supabase
       .from('shifts')
-      .select('id, date, period, users(full_name)')
+      .select('id, date, period, is_chief, users(full_name)')
       .eq('hospital_id', hId)
       .gte('date', monthStart)
       .lte('date', monthEnd)
       .order('date');
 
     if (!error && data) {
-      // Correção: Se users vier como array, pegamos o primeiro item
       const formattedShifts = data.map((shift: any) => ({
         ...shift,
         users: Array.isArray(shift.users) ? shift.users[0] : shift.users
@@ -131,9 +137,7 @@ export default function EscalaMensalPage() {
 
   useEffect(() => {
     async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         router.push('/login');
@@ -159,7 +163,6 @@ export default function EscalaMensalPage() {
         return;
       }
 
-      // Correção preventiva para hospital
       const rawM = membership as any;
       const hospData = rawM.hospitals;
       const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
@@ -176,32 +179,6 @@ export default function EscalaMensalPage() {
   }, []);
 
   const matrix = getDaysMatrix(year, month);
-
-  function periodBadge(period: string) {
-    const styles: any = {
-      manha: 'bg-green-100 text-green-700 border border-green-300',
-      tarde: 'bg-blue-100 text-blue-700 border border-blue-300',
-      noite: 'bg-purple-100 text-purple-700 border border-purple-300',
-      '24h': 'bg-orange-100 text-orange-700 border border-orange-300',
-    };
-
-    const labels: any = {
-      manha: 'MANHÃ',
-      tarde: 'TARDE',
-      noite: 'NOITE',
-      '24h': '24H',
-    };
-
-    return (
-      <span
-        className={
-          'text-[10px] px-2 py-0.5 rounded-lg font-medium ' + styles[period]
-        }
-      >
-        {labels[period]}
-      </span>
-    );
-  }
 
   function periodCountBadge(
     period: 'manha' | 'tarde' | 'noite' | '24h',
@@ -266,30 +243,25 @@ export default function EscalaMensalPage() {
     setCopyLoading(true);
 
     try {
-      const sourceStart = new Date(year, month, 1)
-        .toISOString()
-        .slice(0, 10);
-      const sourceEnd = new Date(year, month + 1, 0)
-        .toISOString()
-        .slice(0, 10);
+      const sourceStart = new Date(year, month, 1).toISOString().slice(0, 10);
+      const sourceEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
 
       type CopyRow = {
         date: string;
         period: string | null;
         doctor_user_id: string | null;
+        is_chief: boolean;
       };
 
       const { data: sourceData, error: sourceError } = await supabase
         .from('shifts')
-        .select('date, period, doctor_user_id')
+        .select('date, period, doctor_user_id, is_chief')
         .eq('hospital_id', hospitalId)
         .gte('date', sourceStart)
         .lte('date', sourceEnd);
 
       if (sourceError) {
-        setCopyError(
-          `Erro ao carregar escala do mês atual: ${sourceError.message}`
-        );
+        setCopyError(`Erro ao carregar escala do mês atual: ${sourceError.message}`);
         setCopyLoading(false);
         return;
       }
@@ -301,6 +273,7 @@ export default function EscalaMensalPage() {
         date: string;
         period: string;
         doctor_user_id: string;
+        is_chief: boolean;
       }[] = [];
 
       for (const row of sourceRows) {
@@ -311,7 +284,6 @@ export default function EscalaMensalPage() {
 
         const targetDate = new Date(targetYearNum, targetMonthIndex, day);
 
-        // Ignora dias que não existem no mês destino
         if (targetDate.getMonth() !== targetMonthIndex) {
           continue;
         }
@@ -323,15 +295,12 @@ export default function EscalaMensalPage() {
           date: targetIso,
           period: row.period,
           doctor_user_id: row.doctor_user_id,
+          is_chief: row.is_chief ?? false,
         });
       }
 
-      const targetStart = new Date(targetYearNum, targetMonthIndex, 1)
-        .toISOString()
-        .slice(0, 10);
-      const targetEnd = new Date(targetYearNum, targetMonthIndex + 1, 0)
-        .toISOString()
-        .slice(0, 10);
+      const targetStart = new Date(targetYearNum, targetMonthIndex, 1).toISOString().slice(0, 10);
+      const targetEnd = new Date(targetYearNum, targetMonthIndex + 1, 0).toISOString().slice(0, 10);
 
       const { error: deleteError } = await supabase
         .from('shifts')
@@ -341,9 +310,7 @@ export default function EscalaMensalPage() {
         .lte('date', targetEnd);
 
       if (deleteError) {
-        setCopyError(
-          `Erro ao limpar escala do mês de destino: ${deleteError.message}`
-        );
+        setCopyError(`Erro ao limpar escala do mês de destino: ${deleteError.message}`);
         setCopyLoading(false);
         return;
       }
@@ -354,29 +321,21 @@ export default function EscalaMensalPage() {
           .insert(rowsToInsert);
 
         if (insertError) {
-          setCopyError(
-            `Erro ao copiar escala para o mês destino: ${insertError.message}`
-          );
+          setCopyError(`Erro ao copiar escala para o mês destino: ${insertError.message}`);
           setCopyLoading(false);
           return;
         }
 
-        setCopySuccess(
-          `Escala copiada com sucesso para ${copyTargetMonth}.`
-        );
+        setCopySuccess(`Escala copiada com sucesso para ${copyTargetMonth}.`);
       } else {
-        setCopySuccess(
-          'Não havia plantões no mês atual para copiar (ou todos caíram em dias inexistentes no mês destino).'
-        );
+        setCopySuccess('Não havia plantões no mês atual para copiar (ou todos caíram em dias inexistentes no mês destino).');
       }
 
       setYear(targetYearNum);
       setMonth(targetMonthIndex);
       await loadShifts(hospitalId, targetYearNum, targetMonthIndex);
     } catch (err: any) {
-      setCopyError(
-        `Erro inesperado ao copiar escala: ${err?.message ?? String(err)}`
-      );
+      setCopyError(`Erro inesperado ao copiar escala: ${err?.message ?? String(err)}`);
     } finally {
       setCopyLoading(false);
     }
@@ -538,25 +497,68 @@ export default function EscalaMensalPage() {
                     </div>
                   )}
 
-                  {/* Lista de plantões do dia */}
-                  {dayShifts.map((s) => (
-                    <div
-                      key={s.id}
-                      className="mb-1 p-1 bg-slate-50 rounded border flex flex-col"
-                    >
-                      <span className="font-medium text-[11px]">
-                        {s.users?.full_name ?? 'Sem nome'}
-                      </span>
-                      <div className="mt-1">{periodBadge(s.period)}</div>
+                  {/* VISUALIZAÇÃO AGRUPADA POR TURNO */}
+                  {day && (
+                    <div className="flex flex-col gap-1.5 mt-1">
+                      {PERIOD_CONFIG.map((cfg) => {
+                        // AQUI ESTÁ A LÓGICA DE ORDENAÇÃO
+                        const shiftsInPeriod = dayShifts
+                          .filter((s) => s.period === cfg.key)
+                          .sort((a, b) => {
+                            // Se a é chefe e b não, a vem primeiro (-1)
+                            if (a.is_chief && !b.is_chief) return -1;
+                            // Se b é chefe e a não, b vem primeiro (1)
+                            if (!a.is_chief && b.is_chief) return 1;
+                            return 0;
+                          });
+
+                        if (shiftsInPeriod.length === 0) return null;
+
+                        return (
+                          <div 
+                            key={cfg.key} 
+                            className="flex flex-col rounded border border-slate-200 overflow-hidden bg-white shadow-sm"
+                          >
+                            {/* Cabeçalho do Turno */}
+                            <div className={`text-[9px] font-bold px-1.5 py-0.5 border-b uppercase tracking-wide ${groupStyles[cfg.key]}`}>
+                              {cfg.label}
+                            </div>
+
+                            {/* Lista de Nomes (Ordenada com CH no topo) */}
+                            <div className="flex flex-col px-1.5 py-1 gap-0.5">
+                              {shiftsInPeriod.map((s) => (
+                                <div key={s.id} className="flex items-start gap-1">
+                                  <span 
+                                    className="text-[10px] text-slate-700 font-medium leading-tight break-words flex-1"
+                                    title={s.users?.full_name ?? 'Sem nome'}
+                                  >
+                                    {s.users?.full_name ?? 'Sem nome'}
+                                  </span>
+                                  
+                                  {/* Badge de Chefe */}
+                                  {s.is_chief && (
+                                    <span 
+                                      className="text-[8px] font-bold bg-slate-800 text-white px-1 rounded-[3px] leading-none py-0.5 mt-0.5"
+                                      title="Chefe de Plantão"
+                                    >
+                                      CH
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
+                  )}
 
                   {day && iso && (
                     <button
                       onClick={() =>
                         router.push(`/escala/editar?date=${iso}`)
                       }
-                      className="text-[10px] text-slate-500 underline mt-auto"
+                      className="text-[10px] text-slate-500 underline mt-auto pt-2"
                     >
                       + editar / adicionar
                     </button>

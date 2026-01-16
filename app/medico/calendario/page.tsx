@@ -8,11 +8,21 @@ import { supabase } from '@/lib/supabaseClient';
 type AvailabilityPeriod = 'manha' | 'tarde' | 'noite';
 
 type ShiftRow = {
+  id: number; // ID do plantão (necessário para passar plantão)
   date: string;
   period: 'manha' | 'tarde' | 'noite' | '24h';
 };
 
-// Nova tipagem para as oportunidades de troca
+// Nova tipagem completa para a equipe do dia
+type FullShiftData = {
+  id: number;
+  date: string;
+  period: 'manha' | 'tarde' | 'noite' | '24h';
+  doctor_user_id: string;
+  is_chief: boolean;
+  users: { full_name: string | null } | null;
+};
+
 type SwapOpportunity = {
   id: number;
   date: string;
@@ -58,13 +68,13 @@ function buildMonthMatrix(year: number, monthIndex: number) {
 
 // --- HELPER VISUAL ---
 function getPeriodBadge(p: string) {
-    switch (p) {
-      case 'manha': return { label: 'M', color: 'bg-green-100 text-green-700 border-green-200' };
-      case 'tarde': return { label: 'T', color: 'bg-blue-100 text-blue-700 border-blue-200' };
-      case 'noite': return { label: 'N', color: 'bg-purple-100 text-purple-700 border-purple-200' };
-      case '24h': return { label: '24', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      default: return { label: '?', color: 'bg-gray-100 text-gray-700 border-gray-200' };
-    }
+  switch (p) {
+    case 'manha': return { label: 'M', color: 'bg-green-100 text-green-700 border-green-200' };
+    case 'tarde': return { label: 'T', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+    case 'noite': return { label: 'N', color: 'bg-purple-100 text-purple-700 border-purple-200' };
+    case '24h': return { label: '24', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+    default: return { label: '?', color: 'bg-gray-100 text-gray-700 border-gray-200' };
+  }
 }
 
 export default function MedicoCalendarioPage() {
@@ -81,11 +91,14 @@ export default function MedicoCalendarioPage() {
 
   const [monthAvailability, setMonthAvailability] = useState<MonthAvailability>({});
   const [monthShifts, setMonthShifts] = useState<MonthShifts>({});
-  const [monthOpportunities, setMonthOpportunities] = useState<MonthOpportunities>({}); // Novo estado
+  const [monthOpportunities, setMonthOpportunities] = useState<MonthOpportunities>({});
   
   // Estado para o Modal de Detalhes do Dia
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [processingId, setProcessingId] = useState<number | null>(null);
+  const [selectedDateTeam, setSelectedDateTeam] = useState<FullShiftData[]>([]); // Equipe completa do dia selecionado
+  const [loadingDayDetails, setLoadingDayDetails] = useState(false); // Loading do modal
+
+  const [processingId, setProcessingId] = useState<number | null>(null); // ID sendo processado (aceitar/passar)
 
   const monthMatrix = buildMonthMatrix(year, month);
   const monthLabel = new Date(year, month, 1).toLocaleDateString('pt-BR', {
@@ -99,7 +112,7 @@ export default function MedicoCalendarioPage() {
     return `${y}-${mm}-${dd}`;
   }
 
-  // --- CARREGAMENTO DE DADOS ---
+  // --- CARREGAMENTO DE DADOS GERAIS (MÊS) ---
   async function loadMonthData(hId: string, uId: string, y: number, m: number) {
     const lastDay = new Date(y, m + 1, 0).getDate();
     const monthStart = toLocalISO(y, m, 1);
@@ -126,7 +139,7 @@ export default function MedicoCalendarioPage() {
     // 2) Plantões Confirmados (Meus)
     const { data: shiftsData } = await supabase
       .from('shifts')
-      .select('date, period')
+      .select('id, date, period') // Pegando ID também
       .eq('hospital_id', hId)
       .eq('doctor_user_id', uId)
       .gte('date', monthStart)
@@ -137,29 +150,25 @@ export default function MedicoCalendarioPage() {
       const d = row.date as string;
       const period = row.period as ShiftRow['period'];
       if (!shiftsMap[d]) shiftsMap[d] = [];
-      shiftsMap[d].push({ date: d, period });
+      shiftsMap[d].push({ id: row.id, date: d, period });
     });
     setMonthShifts(shiftsMap);
 
-    // 3) Oportunidades de Troca (Swaps Disponíveis)
-    // Busca plantões que outros médicos soltaram
+    // 3) Oportunidades de Troca
     const { data: swapData } = await supabase
       .from('shift_swap_requests')
       .select('id, created_at, status, target_user_id, requester:requester_user_id(full_name), shift:from_shift_id(date, period)')
       .eq('hospital_id', hId)
-      .neq('requester_user_id', uId) // Não mostrar os meus próprios pedidos
-      .eq('status', 'pendente') // Apenas pendentes
-      .or(`target_user_id.is.null,target_user_id.eq.${uId}`) // Aberto a todos OU reservado pra mim
-      // Nota: Filtramos por data no JS pois a data está na relação 'shift'
+      .neq('requester_user_id', uId)
+      .eq('status', 'pendente')
+      .or(`target_user_id.is.null,target_user_id.eq.${uId}`);
       
     const oppMap: MonthOpportunities = {};
     (swapData ?? []).forEach((item: any) => {
-      // Normaliza dados
       const shift = Array.isArray(item.shift) ? item.shift[0] : item.shift;
       if (!shift) return;
 
       const d = shift.date;
-      // Filtra apenas se for deste mês visualizado
       if (d < monthStart || d > monthEnd) return;
 
       if (!oppMap[d]) oppMap[d] = [];
@@ -175,6 +184,36 @@ export default function MedicoCalendarioPage() {
     setMonthOpportunities(oppMap);
   }
 
+  // --- CARREGAR DETALHES DO DIA (EQUIPE COMPLETA) ---
+  async function loadDayTeam(date: string) {
+    if (!hospitalId) return;
+    setLoadingDayDetails(true);
+    
+    // Busca todos os plantões daquele dia no hospital
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('id, date, period, doctor_user_id, is_chief, users(full_name)')
+      .eq('hospital_id', hospitalId)
+      .eq('date', date)
+      .order('period');
+
+    if (!error && data) {
+      const formatted = data.map((d: any) => ({
+        ...d,
+        users: Array.isArray(d.users) ? d.users[0] : d.users
+      })) as FullShiftData[];
+      
+      setSelectedDateTeam(formatted);
+    }
+    setLoadingDayDetails(false);
+  }
+
+  // --- AO CLICAR NO DIA ---
+  function handleDayClick(date: string) {
+    setSelectedDate(date);
+    loadDayTeam(date); // Carrega a equipe
+  }
+
   function handleMonthChange(delta: number) {
     const newDate = new Date(year, month + delta, 1);
     const newYear = newDate.getFullYear();
@@ -186,33 +225,57 @@ export default function MedicoCalendarioPage() {
     }
   }
 
-  // --- AÇÃO: ACEITAR PLANTÃO (CORRIGIDA) ---
+  // --- AÇÃO: ACEITAR PLANTÃO ---
   async function handleManifestarInteresse(swapId: number) {
     if (!userId) return;
     setProcessingId(swapId);
 
     try {
-      // 1. Atualiza a solicitação para "Match" (target = eu)
-      // NÃO altera a tabela 'shifts' diretamente (evita erro de permissão)
       const { error } = await supabase
         .from('shift_swap_requests')
-        .update({ 
-            target_user_id: userId,
-            // status: 'pendente' (mantém pendente pro admin ver)
-        })
+        .update({ target_user_id: userId })
         .eq('id', swapId);
 
       if (error) throw error;
-
-      alert('Interesse registrado! Aguardando confirmação da coordenação.');
-      
-      // Recarrega para atualizar visual
+      alert('Interesse registrado! Aguardando confirmação.');
       if (hospitalId) loadMonthData(hospitalId, userId, year, month);
-      setSelectedDate(null); // Fecha modal
-
+      setSelectedDate(null);
     } catch (err) {
       console.error(err);
-      alert('Erro ao processar. Tente novamente.');
+      alert('Erro ao processar.');
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
+  // --- NOVA AÇÃO: PASSAR PLANTÃO ---
+  async function handlePassarPlantao(shiftId: number) {
+    if (!userId || !hospitalId) return;
+    
+    const confirm = window.confirm('Deseja anunciar este plantão para troca?');
+    if (!confirm) return;
+
+    setProcessingId(shiftId);
+
+    try {
+      const { error } = await supabase
+        .from('shift_swap_requests')
+        .insert({
+          hospital_id: hospitalId,
+          requester_user_id: userId,
+          from_shift_id: shiftId,
+          status: 'pendente'
+          // target_user_id fica null (aberto para todos)
+        });
+
+      if (error) throw error;
+      alert('Plantão anunciado com sucesso!');
+      if (hospitalId) loadMonthData(hospitalId, userId, year, month);
+      // Opcional: fechar modal ou recarregar detalhes
+      setSelectedDate(null);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao anunciar troca. Verifique se já não existe um pedido.');
     } finally {
       setProcessingId(null);
     }
@@ -257,38 +320,50 @@ export default function MedicoCalendarioPage() {
   const renderDayDetails = () => {
     if (!selectedDate) return null;
     
-    // Formatar data bonita
     const [y, m, d] = selectedDate.split('-').map(Number);
     const dateLabel = new Date(y, m-1, d).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 
     const opportunities = monthOpportunities[selectedDate] || [];
     const myShifts = monthShifts[selectedDate] || [];
     
+    // Agrupamento da equipe por período
+    const teamByPeriod: Record<string, FullShiftData[]> = {
+      manha: [], tarde: [], noite: [], '24h': []
+    };
+    
+    selectedDateTeam.forEach(s => {
+      if (teamByPeriod[s.period]) teamByPeriod[s.period].push(s);
+    });
+
+    // Ordenação (Chefe primeiro)
+    Object.keys(teamByPeriod).forEach(key => {
+      teamByPeriod[key].sort((a, b) => {
+        if (a.is_chief && !b.is_chief) return -1;
+        if (!a.is_chief && b.is_chief) return 1;
+        return 0;
+      });
+    });
+
+    const periodsConfig = [
+        { key: 'manha', label: 'Manhã', color: 'bg-green-50 text-green-800 border-green-100' },
+        { key: 'tarde', label: 'Tarde', color: 'bg-blue-50 text-blue-800 border-blue-100' },
+        { key: 'noite', label: 'Noite', color: 'bg-purple-50 text-purple-800 border-purple-100' },
+        { key: '24h',   label: '24h',   color: 'bg-orange-50 text-orange-800 border-orange-100' },
+    ];
+
     return (
       <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
-          <div className="bg-slate-50 border-b px-4 py-3 flex justify-between items-center">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[85vh]">
+          {/* Header */}
+          <div className="bg-slate-50 border-b px-4 py-3 flex justify-between items-center shrink-0">
             <h3 className="font-bold text-slate-800 capitalize">{dateLabel}</h3>
-            <button onClick={() => setSelectedDate(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            <button onClick={() => setSelectedDate(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
           </div>
           
-          <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="p-4 space-y-6 overflow-y-auto">
             
-            {/* Seus Plantões */}
-            {myShifts.length > 0 && (
-                <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Seus Plantões</p>
-                    {myShifts.map((s, i) => (
-                        <div key={i} className="bg-blue-50 border border-blue-100 rounded p-2 text-sm text-blue-800 flex items-center gap-2">
-                             <span className="font-bold uppercase text-xs">{s.period}</span>
-                             <span>Confirmado</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Oportunidades */}
-            {opportunities.length > 0 ? (
+            {/* SEÇÃO 1: Trocas Disponíveis (Oportunidades) */}
+            {opportunities.length > 0 && (
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Trocas Disponíveis</p>
                     {opportunities.map((op) => {
@@ -304,7 +379,7 @@ export default function MedicoCalendarioPage() {
                                     </div>
                                     
                                     {iAmTarget ? (
-                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold">
+                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold text-center leading-tight">
                                             Aguardando<br/>Coordenação
                                         </span>
                                     ) : (
@@ -321,11 +396,65 @@ export default function MedicoCalendarioPage() {
                         );
                     })}
                 </div>
-            ) : (
-                myShifts.length === 0 && <p className="text-center text-sm text-slate-400 py-4">Nenhum evento neste dia.</p>
             )}
 
-            <div className="pt-2 border-t mt-2">
+            {/* SEÇÃO 2: Equipe Escalada (Escala do Dia) */}
+            <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex justify-between items-center">
+                   <span>Equipe Escalada</span>
+                   {loadingDayDetails && <span className="text-[9px] font-normal lowercase">carregando...</span>}
+                </p>
+
+                {periodsConfig.map((pConf) => {
+                    const shiftsInPeriod = teamByPeriod[pConf.key] || [];
+                    if (shiftsInPeriod.length === 0) return null;
+
+                    return (
+                        <div key={pConf.key} className="mb-3 border rounded-lg overflow-hidden">
+                            <div className={`text-[10px] font-bold px-2 py-1 uppercase tracking-wide border-b ${pConf.color}`}>
+                                {pConf.label}
+                            </div>
+                            <div className="bg-white p-1 flex flex-col gap-1">
+                                {shiftsInPeriod.map(s => {
+                                    const isMe = s.doctor_user_id === userId;
+
+                                    return (
+                                        <div key={s.id} className={`flex items-center justify-between p-1.5 rounded ${isMe ? 'bg-blue-50 border border-blue-100' : 'bg-white'}`}>
+                                            <div className="flex items-center gap-1.5 overflow-hidden">
+                                                <span className={`text-xs truncate ${isMe ? 'font-bold text-blue-900' : 'text-slate-700'}`}>
+                                                    {s.users?.full_name ?? 'Sem nome'} {isMe && '(Você)'}
+                                                </span>
+                                                {s.is_chief && (
+                                                    <span className="text-[9px] font-bold bg-slate-800 text-white px-1 rounded py-0.5" title="Chefe de Plantão">
+                                                        CH
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Botão Passar Plantão (Apenas se for meu e não estiver em processamento) */}
+                                            {isMe && (
+                                                <button
+                                                    onClick={() => handlePassarPlantao(s.id)}
+                                                    disabled={!!processingId}
+                                                    className="shrink-0 text-[10px] text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
+                                                >
+                                                    {processingId === s.id ? '...' : 'Passar'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )
+                })}
+
+                {!loadingDayDetails && selectedDateTeam.length === 0 && (
+                     <p className="text-center text-xs text-slate-400 py-2">Nenhum médico escalado ainda.</p>
+                )}
+            </div>
+            
+            <div className="pt-2 border-t">
                 <button 
                     onClick={() => router.push(`/medico/disponibilidade?date=${selectedDate}`)}
                     className="w-full text-center text-xs text-blue-600 hover:underline py-1"
@@ -398,14 +527,13 @@ export default function MedicoCalendarioPage() {
                 return (
                   <button
                     key={`${wi}-${di}`}
-                    onClick={() => setSelectedDate(iso)}
+                    onClick={() => handleDayClick(iso)}
                     className={`h-16 rounded-lg border flex flex-col items-center justify-start pt-1 relative ${bg} ${border} ${isToday ? 'ring-2 ring-blue-400' : ''}`}
                   >
                     <span className={`text-xs font-medium ${hasShifts ? 'text-sky-700' : hasOpp ? 'text-orange-700' : hasAvailability ? 'text-emerald-700' : 'text-slate-600'}`}>{day}</span>
                     
                     {/* Indicadores Visuais */}
                     <div className="flex gap-1 mt-1 flex-wrap justify-center px-0.5">
-                        
                         {/* Bolinha Laranja = Troca Disponível */}
                         {hasOpp && <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1"></div>}
 
@@ -419,7 +547,7 @@ export default function MedicoCalendarioPage() {
                             );
                         })}
 
-                         {/* Bolinha verde = Disponibilidade (só se não tiver nada mais importante) */}
+                         {/* Bolinha verde = Disponibilidade */}
                          {hasAvailability && !hasShifts && !hasOpp && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1"></div>}
                     </div>
                   </button>

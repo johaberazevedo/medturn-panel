@@ -3,21 +3,14 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-// Importamos a Server Action
 import { registerUser } from '@/app/actions/register';
 
-type Membership = {
-  hospital_id: string;
-  hospitals: {
-    name: string | null;
-  } | null;
-};
-
 type DoctorRow = {
-  id: number;
+  id: number; // ID do vínculo (hospital_users)
   role: 'admin' | 'doctor' | 'coordenador';
   created_at: string;
   users: {
+    id: string; // UUID do usuário (NECESSÁRIO PARA UPDATE)
     full_name: string | null;
     email: string | null;
   } | null;
@@ -32,25 +25,32 @@ export default function MedicosPage() {
   const [error, setError] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
 
-  // Estados do Formulário de Cadastro
+  // Estados do Formulário de Cadastro (Novo)
   const [showForm, setShowForm] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+  // Estados de Ação na Tabela
   const [savingChangeId, setSavingChangeId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
 
+  // --- NOVOS ESTADOS PARA EDIÇÃO ---
+  const [editingDoctor, setEditingDoctor] = useState<DoctorRow | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   async function reloadDoctors(hId: string) {
+    // AJUSTE: Trazendo o ID do usuário (users(id, ...)) para podermos editar
     const { data: doctorsData, error: doctorsError } = await supabase
       .from('hospital_users')
-      .select('id, role, created_at, users(full_name, email)')
+      .select('id, role, created_at, users(id, full_name, email)') 
       .eq('hospital_id', hId)
       .order('role', { ascending: true });
 
     if (doctorsError) {
       setError('Não foi possível carregar a lista de médicos.');
     } else if (doctorsData) {
-      // Correção de tipagem (Array -> Objeto)
       const formatted = doctorsData.map((d: any) => ({
         ...d,
         users: Array.isArray(d.users) ? d.users[0] : d.users
@@ -91,7 +91,6 @@ export default function MedicosPage() {
         return;
       }
 
-      // Correção de tipagem (Membership)
       const raw = membership as any;
       const hospData = raw.hospitals;
       const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
@@ -111,7 +110,7 @@ export default function MedicosPage() {
     router.push('/login');
   }
 
-  // Nova função de submit usando Server Action
+  // Cadastro de Novo Médico
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsPending(true);
@@ -130,7 +129,6 @@ export default function MedicosPage() {
     } else {
       setActionMessage('Médico cadastrado e vinculado com sucesso!');
       setShowForm(false);
-      // Recarrega a lista para mostrar o novo médico
       if (hospitalId) await reloadDoctors(hospitalId);
     }
     setIsPending(false);
@@ -189,6 +187,43 @@ export default function MedicosPage() {
     }
   }
 
+  // --- NOVA FUNÇÃO: Abrir Modal de Edição ---
+  function openEditModal(doctor: DoctorRow) {
+    setEditingDoctor(doctor);
+    setEditName(doctor.users?.full_name || '');
+    setEditEmail(doctor.users?.email || '');
+    setError(null);
+    setActionMessage(null);
+  }
+
+  // --- NOVA FUNÇÃO: Salvar Edição ---
+  async function handleUpdateDoctor(e: FormEvent) {
+    e.preventDefault();
+    if (!editingDoctor || !editingDoctor.users?.id || !hospitalId) return;
+
+    setIsUpdating(true);
+    
+    // Atualiza tabela USERS (Dados pessoais)
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ 
+        full_name: editName,
+        email: editEmail
+      })
+      .eq('id', editingDoctor.users.id); // Usa o ID do usuário, não do vínculo
+
+    if (updateError) {
+      setError('Erro ao atualizar dados: ' + updateError.message);
+      setIsUpdating(false);
+      return;
+    }
+
+    await reloadDoctors(hospitalId);
+    setActionMessage('Dados do médico atualizados com sucesso!');
+    setEditingDoctor(null); // Fecha o modal
+    setIsUpdating(false);
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -198,7 +233,61 @@ export default function MedicosPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-100 relative">
+      
+      {/* MODAL DE EDIÇÃO (OVERLAY) */}
+      {editingDoctor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+            <h3 className="text-lg font-bold mb-4 text-slate-800">Editar Médico</h3>
+            
+            <form onSubmit={handleUpdateDoctor} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Nome Completo</label>
+                <input 
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
+                <input 
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                  required
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  * Alterar o e-mail aqui muda apenas o registro visual. O login do usuário pode permanecer o original dependendo da configuração de Auth.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button 
+                  type="button"
+                  onClick={() => setEditingDoctor(null)}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                  disabled={isUpdating}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 text-xs font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg disabled:opacity-50"
+                  disabled={isUpdating}
+                >
+                  {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <header className="w-full border-b bg-white">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -273,7 +362,7 @@ export default function MedicosPage() {
               </button>
             </div>
 
-            {/* FORMULÁRIO BLINDADO */}
+            {/* FORMULÁRIO BLINDADO (NOVO USUÁRIO) */}
             {showForm && (
               <form onSubmit={onSubmit} className="mb-4 p-4 border rounded-lg bg-slate-50 space-y-3">
                 <div className="flex justify-between items-center mb-2">
@@ -396,13 +485,24 @@ export default function MedicosPage() {
                           {new Date(doctor.created_at).toLocaleDateString('pt-BR')}
                         </td>
                         <td className="py-2 pr-4 text-right">
-                          <button
-                            onClick={() => handleRemoveDoctor(doctor.id)}
-                            disabled={removingId === doctor.id}
-                            className="text-[11px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            {removingId === doctor.id ? '...' : 'Remover'}
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            {/* BOTÃO DE EDITAR */}
+                            <button
+                              onClick={() => openEditModal(doctor)}
+                              className="text-[11px] px-2 py-1 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50"
+                            >
+                              Editar
+                            </button>
+
+                            {/* BOTÃO DE REMOVER */}
+                            <button
+                              onClick={() => handleRemoveDoctor(doctor.id)}
+                              disabled={removingId === doctor.id}
+                              className="text-[11px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {removingId === doctor.id ? '...' : 'Remover'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -422,6 +522,9 @@ export default function MedicosPage() {
               </li>
               <li>
                 Você pode promover um médico a <strong>Administrador</strong> mudando o papel dele na tabela acima.
+              </li>
+              <li>
+                Use o botão <strong>Editar</strong> para corrigir nomes digitados incorretamente.
               </li>
             </ul>
           </section>

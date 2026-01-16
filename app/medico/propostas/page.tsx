@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 // --- Tipagens ---
 type SwapRequest = {
   id: number;
-  from_shift_id: number;
+  from_shift_id: number; // <--- ADICIONADO PARA CORRIGIR O ERRO
   status: 'pendente' | 'approved' | 'rejeitado' | 'cancelado';
   reason: string | null;
   created_at: string;
@@ -42,10 +42,10 @@ function PropostasContent() {
   const [activeTab, setActiveTab] = useState<'recebidas' | 'enviadas'>('recebidas');
   const [userId, setUserId] = useState<string | null>(null);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
-   
+  
   const [received, setReceived] = useState<SwapRequest[]>([]);
   const [sent, setSent] = useState<SwapRequest[]>([]);
-   
+  
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
@@ -86,13 +86,14 @@ function PropostasContent() {
       .order('created_at', { ascending: false });
 
     // Buscar RECEBIDAS (Pediram pra mim OU para "Qualquer um")
+    // Logica: target = eu OU target is null (mas sou do mesmo hospital, filtrado acima)
     const { data: receivedData } = await supabase
       .from('shift_swap_requests')
       .select('*, requester:requester_user_id(full_name), target:target_user_id(full_name), shift:from_shift_id(date, period)')
       .eq('hospital_id', hid)
       .or(`target_user_id.eq.${uid},target_user_id.is.null`)
-      .neq('requester_user_id', uid) // Não mostrar as que eu mesmo criei
-      .eq('status', 'pendente') // Só mostra pendentes na inbox
+      .neq('requester_user_id', uid) // Não mostrar as que eu mesmo criei (caso target seja null)
+      .eq('status', 'pendente') // Só mostra pendentes na inbox para aceitar/recusar
       .order('created_at', { ascending: false });
 
     // Normalizar dados (Array -> Object)
@@ -125,20 +126,29 @@ function PropostasContent() {
         setMsg({ text: 'Solicitação recusada.', type: 'success' });
       } 
       
-      else if (action === 'accept') {
-        // --- CORREÇÃO APLICADA AQUI ---
-        // Apenas atualiza a solicitação. A troca real do plantão fica para o Admin ou Trigger.
+      else if (action === 'accept' && requestData) {
+        // ACEITAR TROCA:
+        // 1. Atualiza status da solicitação
+        // 2. Atualiza o plantão na tabela shifts (Assume o plantão)
+        
+        // A. Atualiza Solicitacao
         const { error: reqError } = await supabase
           .from('shift_swap_requests')
-          .update({ 
-            status: 'approved', 
-            target_user_id: userId 
-          }) 
+          .update({ status: 'approved', target_user_id: userId }) // Garante que target sou eu
           .eq('id', id);
-
         if (reqError) throw reqError;
 
-        setMsg({ text: 'Troca aceita! Aguardando processamento.', type: 'success' });
+        // B. Efetiva a troca no plantão original
+        if (requestData.from_shift_id) {
+             const { error: shiftError } = await supabase
+            .from('shifts')
+            .update({ doctor_user_id: userId })
+            .eq('id', requestData.from_shift_id);
+            
+            if (shiftError) throw shiftError;
+        }
+
+        setMsg({ text: 'Troca aceita! Você assumiu o plantão.', type: 'success' });
       }
 
       // Recarrega dados
@@ -146,7 +156,7 @@ function PropostasContent() {
 
     } catch (err: any) {
       console.error(err);
-      setMsg({ text: 'Erro ao processar ação. Tente novamente.', type: 'error' });
+      setMsg({ text: 'Erro ao processar ação. Contate o admin.', type: 'error' });
     } finally {
       setProcessingId(null);
     }
@@ -201,7 +211,7 @@ function PropostasContent() {
                     </div>
                     {statusBadge(req.status)}
                   </div>
-                   
+                  
                   <div className="bg-slate-50 rounded p-2 text-xs text-slate-700 mb-3 border border-slate-100">
                     <p><strong>Quer passar o plantão:</strong></p>
                     <p className="text-sm mt-1">📅 {formatDate(req.shift?.date ?? '')} • {req.shift?.period ?? '?'}</p>
