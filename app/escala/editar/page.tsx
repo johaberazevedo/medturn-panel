@@ -90,6 +90,7 @@ function EditarPlantaoContent() {
   });
 
   async function loadHospitalAndDoctors(userId: string) {
+    // Busca o vínculo na tabela ANTIGA (hospital_users) - BACKUP VERSION
     const { data: membership } = await supabase
       .from('hospital_users')
       .select('hospital_id, hospitals(name)')
@@ -315,6 +316,7 @@ function EditarPlantaoContent() {
     pushNonEmpty(fullDayDoctors, '24h');
 
     try {
+      // 1. Deleta tudo desse dia
       const { error: delError } = await supabase
         .from('shifts')
         .delete()
@@ -322,29 +324,33 @@ function EditarPlantaoContent() {
         .eq('date', dateParam);
 
       if (delError) {
-        setErrorMsg('Erro ao salvar plantões do dia: falha ao limpar registros antigos.');
+        setErrorMsg('Erro ao limpar registros antigos.');
         setSaving(false);
         return;
       }
 
+      // 2. Insere os novos (se houver algum)
       if (toInsert.length > 0) {
         const { error: insertError } = await supabase
           .from('shifts')
           .insert(toInsert);
 
         if (insertError) {
-          setErrorMsg(`Erro ao salvar plantões do dia: ${insertError.message}`);
+          setErrorMsg(`Erro ao salvar: ${insertError.message}`);
           setSaving(false);
           return;
         }
       }
-      setSaving(false);
-      router.push('/escala');
+
+      // 3. O PULO DO GATO: Força o navegador a recarregar a página do zero
+      // Isso limpa qualquer cache e garante que o médico suma da visualização
+      window.location.href = '/escala';
+
     } catch (err: any) {
-      setErrorMsg('Erro ao salvar plantões do dia.');
+      setErrorMsg('Erro inesperado ao salvar.');
       setSaving(false);
     }
-  }
+  }	
 
   async function handleCopyToDate() {
     if (!hospitalId) return;
@@ -396,6 +402,7 @@ function EditarPlantaoContent() {
         }
       }
       setSaving(false);
+      alert('Copiado com sucesso!');
     } catch (err: any) {
       setSaving(false);
     }
@@ -522,13 +529,13 @@ function EditarPlantaoContent() {
                             </span>
                           )}
 
-                          {/* Botão Remover */}
-                          {state.values.length > 1 && (
+                          {/* Botão Remover (MOSTRA SEMPRE SE TIVER MAIS DE 1 OU SE TIVER MÉDICO SELECIONADO) */}
+                          {(state.values.length > 1 || slot.userId !== '') && (
                             <button
                               type="button"
                               className="w-6 h-6 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 transition"
                               onClick={() => handleRemoveDoctor(p.key as any, index)}
-                              title="Remover vaga"
+                              title="Remover vaga / Limpar"
                             >
                               <span className="text-xs font-bold">×</span>
                             </button>
