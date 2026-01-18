@@ -89,52 +89,58 @@ function EditarPlantaoContent() {
     year: 'numeric',
   });
 
-  async function loadHospitalAndDoctors(userId: string) {
-    // Busca o vínculo na tabela ANTIGA (hospital_users) - BACKUP VERSION
-    const { data: membership } = await supabase
-      .from('hospital_users')
-      .select('hospital_id, hospitals(name)')
-      .eq('user_id', userId)
-      .maybeSingle();
+  async function loadHospitalFromStorage() {
+  const storedHospitalId =
+    typeof window !== 'undefined'
+      ? window.localStorage.getItem('activeHospitalId')
+      : null;
 
-    if (!membership) {
-      setErrorMsg('Nenhum hospital encontrado para este usuário.');
-      return null;
-    }
-
-    const hospital_id = membership.hospital_id as string;
-    setHospitalId(hospital_id);
-
-    const hospData = membership.hospitals as any;
-    const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
-    setHospitalName(realName ?? 'Hospital');
-
-    const { data: rows, error } = await supabase
-      .from('hospital_users')
-      .select('user_id, users(full_name, email)')
-      .eq('hospital_id', hospital_id);
-
-    if (error) {
-      setErrorMsg('Erro ao carregar médicos do hospital.');
-      return hospital_id;
-    }
-
-    const mapped: DoctorOption[] = (rows as any[]).map((row) => {
-      const userObj = Array.isArray(row.users) ? row.users[0] : row.users;
-      return {
-        id: row.user_id,
-        name: userObj?.full_name ?? userObj?.email ?? 'Médico sem nome',
-        email: userObj?.email ?? null,
-      };
-    });
-
-    mapped.sort((a, b) =>
-      a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
-    );
-
-    setDoctors(mapped);
-    return hospital_id;
+  if (!storedHospitalId) {
+    router.push('/selecionar-hospital');
+    return null;
   }
+
+  const { data: hosp, error: hospError } = await supabase
+    .from('hospitals')
+    .select('id, name')
+    .eq('id', storedHospitalId)
+    .maybeSingle();
+
+  if (hospError || !hosp) {
+    setErrorMsg('Não foi possível identificar o hospital selecionado.');
+    return null;
+  }
+
+  setHospitalId(hosp.id);
+  setHospitalName(hosp.name ?? 'Hospital');
+
+  return hosp.id as string;
+}
+
+async function loadDoctors(hospital_id: string) {
+  const { data: rows, error } = await supabase
+    .from('hospital_users')
+    .select('user_id, users(full_name, email)')
+    .eq('hospital_id', hospital_id)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    setErrorMsg('Erro ao carregar médicos do hospital.');
+    setDoctors([]);
+    return;
+  }
+
+  const mapped: DoctorOption[] = (rows ?? []).map((row: any) => {
+    const userObj = Array.isArray(row.users) ? row.users[0] : row.users;
+    return {
+      id: row.user_id,
+      name: userObj?.full_name ?? userObj?.email ?? 'Médico sem nome',
+      email: userObj?.email ?? null,
+    };
+  });
+
+  setDoctors(mapped);
+}
 
   async function loadShiftsForDay(hospital_id: string) {
     const { data, error } = await supabase
@@ -180,21 +186,23 @@ function EditarPlantaoContent() {
   }
 
   useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      const hospital_id = await loadHospitalAndDoctors(user.id);
-      if (!hospital_id) return;
-
-      await loadShiftsForDay(hospital_id);
-      await loadAvailabilityForDay(hospital_id);
+  async function init() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/login');
+      return;
     }
-    init();
-  }, [dateParam, router]);
+
+    const hospital_id = await loadHospitalFromStorage();
+    if (!hospital_id) return;
+
+    await loadDoctors(hospital_id);
+    await loadShiftsForDay(hospital_id);
+    await loadAvailabilityForDay(hospital_id);
+  }
+
+  init();
+}, [dateParam, router]);
 
   function handleDoctorChange(
     period: 'manha' | 'tarde' | 'noite' | '24h',

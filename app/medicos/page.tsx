@@ -16,6 +16,11 @@ type DoctorRow = {
   } | null;
 };
 
+type HospitalRow = {
+  id: string;
+  name: string | null;
+};
+
 export default function MedicosPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -40,11 +45,20 @@ export default function MedicosPage() {
   const [editEmail, setEditEmail] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // =========================
+  // IMPORTAR MÉDICOS (NOVO)
+  // =========================
+  const [myRole, setMyRole] = useState<DoctorRow['role'] | null>(null);
+  const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
+  const [importFromHospitalId, setImportFromHospitalId] = useState<string>('');
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importErr, setImportErr] = useState<string | null>(null);
+
   async function reloadDoctors(hId: string) {
-    // AJUSTE: Trazendo o ID do usuário (users(id, ...)) para podermos editar
     const { data: doctorsData, error: doctorsError } = await supabase
       .from('hospital_users')
-      .select('id, role, created_at, users(id, full_name, email)') 
+      .select('id, role, created_at, users(id, full_name, email)')
       .eq('hospital_id', hId)
       .order('role', { ascending: true });
 
@@ -53,14 +67,27 @@ export default function MedicosPage() {
     } else if (doctorsData) {
       const formatted = doctorsData.map((d: any) => ({
         ...d,
-        users: Array.isArray(d.users) ? d.users[0] : d.users
+        users: Array.isArray(d.users) ? d.users[0] : d.users,
       }));
       setDoctors(formatted as DoctorRow[]);
     }
   }
 
+  async function loadHospitalsList() {
+    const { data, error } = await supabase
+      .from('hospitals')
+      .select('id, name')
+      .order('name', { ascending: true });
+
+    if (!error && data) {
+      setHospitals(data as HospitalRow[]);
+    }
+  }
+
   useEffect(() => {
     async function loadDoctors() {
+      setLoading(true);
+
       const {
         data: { user },
         error: userError,
@@ -68,6 +95,16 @@ export default function MedicosPage() {
 
       if (userError || !user) {
         router.push('/login');
+        return;
+      }
+
+      const storedHospitalId =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('activeHospitalId')
+          : null;
+
+      if (!storedHospitalId) {
+        router.push('/selecionar-hospital');
         return;
       }
 
@@ -79,26 +116,39 @@ export default function MedicosPage() {
 
       setUserName(profile?.full_name ?? user.email ?? 'Usuário');
 
-      const { data: membership, error: membershipError } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, hospitals(name)')
-        .eq('user_id', user.id)
+      // Hospital selecionado (nome)
+      const { data: hosp, error: hospError } = await supabase
+        .from('hospitals')
+        .select('id, name')
+        .eq('id', storedHospitalId)
         .maybeSingle();
 
-      if (membershipError || !membership) {
-        setError('Seu usuário não está vinculado a nenhum hospital.');
+      if (hospError || !hosp) {
+        setError('Não foi possível identificar o hospital selecionado.');
         setLoading(false);
         return;
       }
 
-      const raw = membership as any;
-      const hospData = raw.hospitals;
-      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
+      setHospitalId(hosp.id);
+      setHospitalName(hosp.name ?? 'Seu hospital');
 
-      setHospitalId(raw.hospital_id);
-      setHospitalName(realName ?? 'Seu hospital');
+      // Meu papel nesse hospital (pra liberar importação só pra admin/coordenador)
+      const { data: me, error: meErr } = await supabase
+        .from('hospital_users')
+        .select('role')
+        .eq('hospital_id', hosp.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-      await reloadDoctors(raw.hospital_id);
+      if (!meErr && me?.role) {
+        setMyRole(me.role as DoctorRow['role']);
+      } else {
+        setMyRole(null);
+      }
+
+      await reloadDoctors(hosp.id);
+      await loadHospitalsList();
+
       setLoading(false);
     }
 
@@ -202,15 +252,14 @@ export default function MedicosPage() {
     if (!editingDoctor || !editingDoctor.users?.id || !hospitalId) return;
 
     setIsUpdating(true);
-    
-    // Atualiza tabela USERS (Dados pessoais)
+
     const { error: updateError } = await supabase
-      .from('users')
-      .update({ 
-        full_name: editName,
-        email: editEmail
-      })
-      .eq('id', editingDoctor.users.id); // Usa o ID do usuário, não do vínculo
+  .from('users')
+  .update({
+    full_name: editName,
+    // ⚠️ não atualizar email aqui: Auth pode continuar com outro email e você cria inconsistência
+  })
+  .eq('id', editingDoctor.users.id);
 
     if (updateError) {
       setError('Erro ao atualizar dados: ' + updateError.message);
@@ -220,8 +269,69 @@ export default function MedicosPage() {
 
     await reloadDoctors(hospitalId);
     setActionMessage('Dados do médico atualizados com sucesso!');
-    setEditingDoctor(null); // Fecha o modal
+    setEditingDoctor(null);
     setIsUpdating(false);
+  }
+
+  // =========================
+  // IMPORTAR (AÇÃO)
+  // =========================
+  async function handleImportAllFromHospital() {
+    if (!hospitalId) return;
+
+    setImportErr(null);
+    setImportMsg(null);
+
+    // Só admin/coordenador pode disparar
+    if (!(myRole === 'admin' || myRole === 'coordenador')) {
+      setImportErr('Apenas Administrador ou Coordenador pode importar médicos.');
+      return;
+    }
+
+    if (!importFromHospitalId) {
+      setImportErr('Selecione o hospital de origem.');
+      return;
+    }
+
+    if (importFromHospitalId === hospitalId) {
+      setImportErr('Escolha um hospital de origem diferente do hospital atual.');
+      return;
+    }
+
+    const fromName =
+      hospitals.find((h) => h.id === importFromHospitalId)?.name ?? 'hospital de origem';
+
+    const ok = window.confirm(
+      `Importar TODOS os usuários (médicos, coordenadores e admins) de "${fromName}" para "${hospitalName}"?\n\nIsso NÃO apaga ninguém. Apenas cria vínculos que faltam e atualiza vínculos existentes.`
+    );
+    if (!ok) return;
+
+    setImporting(true);
+
+    try {
+      const { data, error } = await supabase.rpc('copy_hospital_users_hu_safe', {
+  p_from_hospital_id: importFromHospitalId,
+  p_to_hospital_id: hospitalId,
+});
+
+      if (error) {
+        // Se a RPC ainda não existir, cai aqui
+        setImportErr(`Erro ao importar: ${error.message}`);
+        return;
+      }
+
+      // data geralmente vem como array com 1 linha, mas pode variar
+      const row = Array.isArray(data) ? data[0] : data;
+      const inserted = row?.inserted_count ?? 0;
+      const updated = row?.updated_count ?? 0;
+
+      setImportMsg(`Importação concluída. Novos vínculos: ${inserted}. Atualizados: ${updated}.`);
+      await reloadDoctors(hospitalId);
+    } catch (e: any) {
+      setImportErr(`Erro inesperado ao importar: ${e?.message ?? String(e)}`);
+    } finally {
+      setImporting(false);
+    }
   }
 
   if (loading) {
@@ -234,40 +344,43 @@ export default function MedicosPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 relative">
-      
       {/* MODAL DE EDIÇÃO (OVERLAY) */}
       {editingDoctor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
             <h3 className="text-lg font-bold mb-4 text-slate-800">Editar Médico</h3>
-            
+
             <form onSubmit={handleUpdateDoctor} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Nome Completo</label>
-                <input 
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Nome Completo
+                </label>
+                <input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
                   required
                 />
               </div>
-              
+
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">E-mail</label>
-                <input 
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
-                  required
-                />
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  E-mail
+                </label>
+                <input
+  type="email"
+  value={editEmail}
+  disabled
+  className="w-full border rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
+ />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  * Alterar o e-mail aqui muda apenas o registro visual. O login do usuário pode permanecer o original dependendo da configuração de Auth.
+                  * E-mail apenas para o registro visual. O login do usuário pode
+                  permanecer o original, em caso de dificuldades, considere recriar o usuário.
                 </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <button 
+                <button
                   type="button"
                   onClick={() => setEditingDoctor(null)}
                   className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
@@ -275,7 +388,7 @@ export default function MedicosPage() {
                 >
                   Cancelar
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 text-xs font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg disabled:opacity-50"
                   disabled={isUpdating}
@@ -323,9 +436,7 @@ export default function MedicosPage() {
             >
               Dashboard
             </button>
-            <span className="px-3 py-1 rounded-full bg-slate-900 text-white">
-              Médicos
-            </span>
+            <span className="px-3 py-1 rounded-full bg-slate-900 text-white">Médicos</span>
             <button
               onClick={() => router.push('/escala')}
               className="px-3 py-1 rounded-full border text-slate-700 hover:bg-white transition"
@@ -342,9 +453,7 @@ export default function MedicosPage() {
           <section className="bg-white rounded-xl shadow-sm p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-800">
-                  Médicos do hospital
-                </h2>
+                <h2 className="text-sm font-semibold text-slate-800">Médicos do hospital</h2>
                 <p className="text-xs text-slate-500">
                   Hospital: <span className="font-medium">{hospitalName}</span>
                 </p>
@@ -364,46 +473,55 @@ export default function MedicosPage() {
 
             {/* FORMULÁRIO BLINDADO (NOVO USUÁRIO) */}
             {showForm && (
-              <form onSubmit={onSubmit} className="mb-4 p-4 border rounded-lg bg-slate-50 space-y-3">
+              <form
+                onSubmit={onSubmit}
+                className="mb-4 p-4 border rounded-lg bg-slate-50 space-y-3"
+              >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-semibold text-sm">Cadastrar Novo Médico</h3>
-                  <button 
-                    type="button" 
-                    onClick={() => setShowForm(false)} 
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(false)}
                     className="text-[10px] text-slate-500 hover:text-slate-800"
                   >
                     Fechar
                   </button>
                 </div>
-                
+
                 <div className="grid gap-3 md:grid-cols-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1 text-slate-600">Nome Completo</label>
-                    <input 
-                      name="fullName" 
-                      required 
-                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
-                      placeholder="Ex: Dr. João Silva" 
+                    <label className="block text-xs font-medium mb-1 text-slate-600">
+                      Nome Completo
+                    </label>
+                    <input
+                      name="fullName"
+                      required
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                      placeholder="Ex: Dr. João Silva"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1 text-slate-600">E-mail de Acesso</label>
-                    <input 
-                      name="email" 
-                      type="email" 
-                      required 
-                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
-                      placeholder="medico@hospital.com" 
+                    <label className="block text-xs font-medium mb-1 text-slate-600">
+                      E-mail de Acesso
+                    </label>
+                    <input
+                      name="email"
+                      type="email"
+                      required
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                      placeholder="medico@hospital.com"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1 text-slate-600">Senha Provisória</label>
-                    <input 
-                      name="password" 
-                      type="text" 
-                      required 
-                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none" 
-                      placeholder="Mínimo 6 caracteres" 
+                    <label className="block text-xs font-medium mb-1 text-slate-600">
+                      Senha Provisória
+                    </label>
+                    <input
+                      name="password"
+                      type="text"
+                      required
+                      className="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                      placeholder="Mínimo 6 caracteres"
                       minLength={6}
                     />
                   </div>
@@ -413,8 +531,8 @@ export default function MedicosPage() {
                   <span className="text-[10px] text-slate-400">
                     * O usuário será criado com perfil de <strong>Médico</strong>.
                   </span>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     disabled={isPending}
                     className="bg-slate-900 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50 font-medium transition-colors"
                   >
@@ -437,9 +555,7 @@ export default function MedicosPage() {
             )}
 
             {doctors.length === 0 ? (
-              <p className="text-sm text-slate-600">
-                Ainda não há médicos vinculados a este hospital.
-              </p>
+              <p className="text-sm text-slate-600">Ainda não há médicos vinculados a este hospital.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -454,25 +570,15 @@ export default function MedicosPage() {
                   </thead>
                   <tbody>
                     {doctors.map((doctor) => (
-                      <tr
-                        key={doctor.id}
-                        className="border-b last:border-0 hover:bg-slate-50"
-                      >
-                        <td className="py-2 pr-4">
-                          {doctor.users?.full_name || 'Sem nome'}
-                        </td>
-                        <td className="py-2 pr-4 text-slate-600">
-                          {doctor.users?.email}
-                        </td>
+                      <tr key={doctor.id} className="border-b last:border-0 hover:bg-slate-50">
+                        <td className="py-2 pr-4">{doctor.users?.full_name || 'Sem nome'}</td>
+                        <td className="py-2 pr-4 text-slate-600">{doctor.users?.email}</td>
                         <td className="py-2 pr-4">
                           <select
                             className="border rounded-lg px-2 py-1 text-xs"
                             value={doctor.role}
                             onChange={(e) =>
-                              handleChangeRole(
-                                doctor.id,
-                                e.target.value as DoctorRow['role']
-                              )
+                              handleChangeRole(doctor.id, e.target.value as DoctorRow['role'])
                             }
                             disabled={savingChangeId === doctor.id}
                           >
@@ -486,7 +592,6 @@ export default function MedicosPage() {
                         </td>
                         <td className="py-2 pr-4 text-right">
                           <div className="flex justify-end gap-2">
-                            {/* BOTÃO DE EDITAR */}
                             <button
                               onClick={() => openEditModal(doctor)}
                               className="text-[11px] px-2 py-1 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50"
@@ -494,7 +599,6 @@ export default function MedicosPage() {
                               Editar
                             </button>
 
-                            {/* BOTÃO DE REMOVER */}
                             <button
                               onClick={() => handleRemoveDoctor(doctor.id)}
                               disabled={removingId === doctor.id}
@@ -513,21 +617,93 @@ export default function MedicosPage() {
           </section>
 
           <section className="bg-white rounded-xl shadow-sm p-4 text-xs text-slate-600">
-            <h3 className="text-sm font-semibold text-slate-800 mb-2">
-              Dica de Gestão
-            </h3>
+            <h3 className="text-sm font-semibold text-slate-800 mb-2">Dica de Gestão</h3>
             <ul className="list-disc list-inside space-y-1">
-              <li>
-                Ao cadastrar um médico, ele já poderá fazer login imediatamente com a senha provisória.
-              </li>
-              <li>
-                Você pode promover um médico a <strong>Administrador</strong> mudando o papel dele na tabela acima.
-              </li>
-              <li>
-                Use o botão <strong>Editar</strong> para corrigir nomes digitados incorretamente.
-              </li>
+              <li>Ao cadastrar um médico, ele já poderá fazer login imediatamente com a senha provisória.</li>
+              <li>Você pode promover um médico a <strong>Administrador</strong> mudando o papel dele na tabela acima.</li>
+              <li>Use o botão <strong>Editar</strong> para corrigir nomes digitados incorretamente.</li>
             </ul>
           </section>
+
+          {/* ========================= */}
+{/* IMPORTAR MÉDICOS (NO FINAL) — DESATIVADO TEMPORARIAMENTE */}
+{/* ========================= */}
+{false && (
+  <section className="bg-white rounded-xl shadow-sm p-4">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-800">Importar usuários de outro hospital</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Isso copia <strong>todos</strong> os vínculos do hospital de origem para este hospital
+          (médicos, coordenadores e admins). Depois você remove quem não quiser.
+        </p>
+      </div>
+
+      <span className="text-[10px] px-2 py-1 rounded-full border bg-slate-50 text-slate-600">
+        Permissão: {myRole ?? '—'}
+      </span>
+    </div>
+
+    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-slate-600 mb-1">
+          Hospital de origem
+        </label>
+        <select
+          value={importFromHospitalId}
+          onChange={(e) => {
+            setImportFromHospitalId(e.target.value);
+            setImportErr(null);
+            setImportMsg(null);
+          }}
+          className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+          disabled={!(myRole === 'admin' || myRole === 'coordenador') || importing}
+        >
+          <option value="">Selecione...</option>
+          {hospitals
+            .filter((h) => h.id !== hospitalId)
+            .map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name ?? h.id}
+              </option>
+            ))}
+        </select>
+        <p className="text-[10px] text-slate-400 mt-1">
+          Dica: se você não achar o hospital aqui, confira se ele existe na tabela <code>hospitals</code>.
+        </p>
+      </div>
+
+      <button
+        onClick={handleImportAllFromHospital}
+        disabled={
+          importing ||
+          !(myRole === 'admin' || myRole === 'coordenador') ||
+          !importFromHospitalId
+        }
+        className="text-xs px-3 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+      >
+        {importing ? 'Importando...' : 'Importar tudo'}
+      </button>
+    </div>
+
+    {importErr && (
+      <div className="mt-3 bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
+        {importErr}
+      </div>
+    )}
+    {importMsg && (
+      <div className="mt-3 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs">
+        {importMsg}
+      </div>
+    )}
+
+    {!(myRole === 'admin' || myRole === 'coordenador') && (
+      <div className="mt-3 bg-slate-50 text-slate-600 border border-slate-200 px-3 py-2 rounded-lg text-xs">
+        Você não tem permissão para importar. Apenas <strong>Administrador</strong> ou <strong>Coordenador</strong>.
+      </div>
+    )}
+  </section>
+)}
         </div>
       </main>
     </div>

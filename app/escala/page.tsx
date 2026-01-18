@@ -144,6 +144,16 @@ export default function EscalaMensalPage() {
         return;
       }
 
+const storedHospitalId =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem('activeHospitalId')
+    : null;
+
+if (!storedHospitalId) {
+  router.push('/selecionar-hospital');
+  return;
+}
+
       const { data: profile } = await supabase
         .from('users')
         .select('full_name')
@@ -152,26 +162,22 @@ export default function EscalaMensalPage() {
 
       setUserName(profile?.full_name ?? user.email ?? 'Usuário');
 
-      const { data: membership } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, hospitals(name)')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { data: hosp, error: hospError } = await supabase
+  .from('hospitals')
+  .select('id, name')
+  .eq('id', storedHospitalId)
+  .maybeSingle();
 
-      if (!membership) {
-        setLoading(false);
-        return;
-      }
+if (hospError || !hosp) {
+  setLoading(false);
+  return;
+}
 
-      const rawM = membership as any;
-      const hospData = rawM.hospitals;
-      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
-      
-      setHospitalId(rawM.hospital_id);
-      setHospitalName(realName ?? 'Hospital');
+setHospitalId(hosp.id);
+setHospitalName(hosp.name ?? 'Hospital');
 
-      await loadShifts(rawM.hospital_id, year, month);
-      setLoading(false);
+await loadShifts(hosp.id, year, month);
+setLoading(false);
     }
 
     init();

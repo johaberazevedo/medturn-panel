@@ -28,26 +28,23 @@ export default function LoginPage() {
 
       // 2. Descobrir o papel (Role) do usuário
       // Buscamos na tabela de vínculo hospital_users
-      const { data: membership, error: memberError } = await supabase
-        .from('hospital_users')
-        .select('role')
-        .eq('user_id', authData.user.id)
-        .maybeSingle();
+      const { data: memberships, error: memberError } = await supabase
+  .from('hospital_users')
+  .select('role')
+  .eq('user_id', authData.user.id);
 
-      // Se der erro ou não achar, assumimos que é um usuário novo ou médico sem vínculo ainda
-      // Nesse caso, mandamos para o portal médico (ou uma tela de onboarding)
-      if (memberError) {
-        console.error('Erro ao buscar perfil:', memberError);
-      }
+if (memberError) {
+  console.error('Erro ao buscar vínculos:', memberError);
+}
 
-      const role = membership?.role; // 'admin' | 'medico' | null
+// 🔐 REGRA FINAL
+const isAdmin = memberships?.some(m => m.role === 'admin');
 
-      // 3. Redirecionamento Inteligente
-      if (role === 'admin') {
-        router.push('/dashboard'); // Painel Admin
-      } else {
-        router.push('/medico'); // Portal do Médico
-      }
+if (isAdmin) {
+  router.push('/dashboard');
+} else {
+  router.push('/medico');
+}
 
     } catch (err: any) {
       console.error(err);

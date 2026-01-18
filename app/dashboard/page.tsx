@@ -206,40 +206,67 @@ export default function DashboardPage() {
   }, []);
 
   // Inicialização
-  useEffect(() => {
-    async function init() {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+useEffect(() => {
+  async function init() {
+    setLoading(true);
 
-      const { data: membership } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, hospitals(name), users(full_name, email)')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
 
-      if (!membership) {
-        setErrorMsg('Não foi possível carregar seu hospital.');
-        setLoading(false);
-        return;
-      }
+    // 1) tenta pegar hospital já selecionado (persistência)
+    const storedHospitalId =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem('activeHospitalId')
+        : null;
 
-      // Correção: Transforma arrays em objetos para hospitals e users
-      const raw = membership as any;
-      const m: MembershipRow = {
-        hospital_id: raw.hospital_id,
-        hospitals: Array.isArray(raw.hospitals) ? raw.hospitals[0] : raw.hospitals,
-        users: Array.isArray(raw.users) ? raw.users[0] : raw.users
-      };
-      setHospitalId(m.hospital_id);
-      setHospitalName(m.hospitals?.name ?? 'Hospital');
-      setAdminName(m.users?.full_name ?? 'Administrador');
+    // 2) precisa ter hospital selecionado (multi-hospital via activeHospitalId)
+if (!storedHospitalId) {
+  setLoading(false);
+  router.push('/selecionar-hospital');
+  return;
+}
 
-      await loadData(m.hospital_id);
-      setLoading(false);
-    }
-    init();
-  }, [router, loadData]);
+// 3) carrega hospital pelo ID selecionado
+const { data: hosp, error: hospError } = await supabase
+  .from('hospitals')
+  .select('id, name')
+  .eq('id', storedHospitalId)
+  .maybeSingle();
+
+if (hospError || !hosp) {
+  console.error('Erro ao carregar hospital:', hospError);
+  setErrorMsg('Não foi possível identificar o hospital selecionado.');
+  setLoading(false);
+  return;
+}
+
+// 4) carrega nome do usuário logado
+const { data: profile, error: profileError } = await supabase
+  .from('users')
+  .select('full_name, email')
+  .eq('id', user.id)
+  .maybeSingle();
+
+if (profileError) {
+  console.error('Erro ao carregar perfil:', profileError);
+}
+
+// 5) aplica
+setHospitalId(hosp.id);
+setHospitalName(hosp.name ?? 'Hospital');
+setAdminName(profile?.full_name ?? profile?.email ?? user.email ?? 'Administrador');
+
+// garante persistência (mantém padrão do resto do app)
+if (typeof window !== 'undefined') {
+  window.localStorage.setItem('activeHospitalId', hosp.id);
+}
+
+await loadData(hosp.id);
+setLoading(false);
+  }
+
+  init();
+}, [router, loadData]);
 
   // 🔥 REALTIME: Escuta mudanças no banco e atualiza a tela sozinho
   useEffect(() => {
@@ -310,6 +337,12 @@ export default function DashboardPage() {
             >
               Gerenciar médicos
             </button>
+<button
+  onClick={() => router.push('/selecionar-hospital')}
+  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+>
+  Trocar hospital
+</button>
           </div>
         </div>
       </header>

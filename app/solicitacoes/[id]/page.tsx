@@ -179,40 +179,70 @@ export default function SwapRequestDetailPage() {
     if (fixedData.target_user_id) setSelectedDoctor(fixedData.target_user_id);
   }
 
-  useEffect(() => {
+    useEffect(() => {
     async function init() {
       if (!requestId) return;
       setLoading(true);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+      setErrorMsg(null);
 
-      const { data: membership } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, hospitals(name)')
-        .eq('user_id', user.id)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      // 1) Descobre o hospital verdadeiro desta solicitação (não depende do activeHospitalId)
+      const { data: reqMeta, error: reqMetaError } = await supabase
+        .from('shift_swap_requests')
+        .select('id, hospital_id')
+        .eq('id', requestId)
         .maybeSingle();
 
-      if (!membership) {
-        setErrorMsg('Hospital não encontrado.');
+      if (reqMetaError || !reqMeta) {
+        setErrorMsg('Solicitação não encontrada (ID inválido ou sem acesso).');
         setLoading(false);
         return;
       }
 
-      // Correção: Normaliza membership
-      const rawM = membership as any;
-      const hospData = rawM.hospitals;
-      const realName = Array.isArray(hospData) ? hospData[0]?.name : hospData?.name;
+      const realHospitalId = reqMeta.hospital_id as string;
 
-      setHospitalId(rawM.hospital_id);
-      setHospitalName(realName ?? 'Hospital');
+      // 2) Se o hospital ativo estiver diferente, sincroniza (multi-hospital safe)
+      const storedHospitalId =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('activeHospitalId')
+          : null;
 
+      if (typeof window !== 'undefined') {
+        if (!storedHospitalId || storedHospitalId !== realHospitalId) {
+          window.localStorage.setItem('activeHospitalId', realHospitalId);
+        }
+      }
+
+      // 3) Carrega o nome do hospital real
+      const { data: hosp, error: hospError } = await supabase
+        .from('hospitals')
+        .select('id, name')
+        .eq('id', realHospitalId)
+        .maybeSingle();
+
+      if (hospError || !hosp) {
+        setErrorMsg('Hospital não encontrado para esta solicitação.');
+        setLoading(false);
+        return;
+      }
+
+      setHospitalId(hosp.id);
+      setHospitalName(hosp.name ?? 'Hospital');
+
+      // 4) Agora sim carrega detalhe e lista de médicos do hospital certo
       await Promise.all([
-        loadDetail(rawM.hospital_id),
-        loadDoctors(rawM.hospital_id)
+        loadDetail(realHospitalId),
+        loadDoctors(realHospitalId),
       ]);
+
       setLoading(false);
     }
+
     init();
   }, [requestId, router]);
 
