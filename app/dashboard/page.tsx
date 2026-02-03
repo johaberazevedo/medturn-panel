@@ -331,6 +331,14 @@ setLoading(false);
             >
               Ver escala mensal
             </button>
+{/* 🙈 ESCONDENDO BOTÃO DE CHECK-IN DO DASHBOARD
+            <button
+              onClick={() => router.push('/checkin')}
+              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+            >
+              Check-in
+            </button>
+            */}
             <button 
               onClick={() => router.push('/medicos')} 
               className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"

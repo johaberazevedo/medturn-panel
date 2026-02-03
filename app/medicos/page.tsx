@@ -40,10 +40,15 @@ export default function MedicosPage() {
   const [removingId, setRemovingId] = useState<number | null>(null);
 
   // --- NOVOS ESTADOS PARA EDIÇÃO ---
-  const [editingDoctor, setEditingDoctor] = useState<DoctorRow | null>(null);
+    const [editingDoctor, setEditingDoctor] = useState<DoctorRow | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // --- NOVOS ESTADOS: VINCULAR EM OUTRO HOSPITAL ---
+  const [linkingDoctor, setLinkingDoctor] = useState<DoctorRow | null>(null);
+  const [linkToHospitalId, setLinkToHospitalId] = useState<string>('');
+  const [linkingToOther, setLinkingToOther] = useState(false);
 
   // =========================
   // IMPORTAR MÉDICOS (NOVO)
@@ -238,7 +243,7 @@ export default function MedicosPage() {
   }
 
   // --- NOVA FUNÇÃO: Abrir Modal de Edição ---
-  function openEditModal(doctor: DoctorRow) {
+    function openEditModal(doctor: DoctorRow) {
     setEditingDoctor(doctor);
     setEditName(doctor.users?.full_name || '');
     setEditEmail(doctor.users?.email || '');
@@ -246,7 +251,6 @@ export default function MedicosPage() {
     setActionMessage(null);
   }
 
-  // --- NOVA FUNÇÃO: Salvar Edição ---
   async function handleUpdateDoctor(e: FormEvent) {
     e.preventDefault();
     if (!editingDoctor || !editingDoctor.users?.id || !hospitalId) return;
@@ -254,12 +258,11 @@ export default function MedicosPage() {
     setIsUpdating(true);
 
     const { error: updateError } = await supabase
-  .from('users')
-  .update({
-    full_name: editName,
-    // ⚠️ não atualizar email aqui: Auth pode continuar com outro email e você cria inconsistência
-  })
-  .eq('id', editingDoctor.users.id);
+      .from('users')
+      .update({
+        full_name: editName,
+      })
+      .eq('id', editingDoctor.users.id);
 
     if (updateError) {
       setError('Erro ao atualizar dados: ' + updateError.message);
@@ -271,6 +274,78 @@ export default function MedicosPage() {
     setActionMessage('Dados do médico atualizados com sucesso!');
     setEditingDoctor(null);
     setIsUpdating(false);
+  }
+
+  // =========================
+  // VINCULAR EM OUTRO HOSPITAL
+  // =========================
+  function openLinkModal(doctor: DoctorRow) {
+    setLinkingDoctor(doctor);
+    setLinkToHospitalId('');
+    setError(null);
+    setActionMessage(null);
+  }
+
+  async function handleLinkDoctorToOtherHospital() {
+    // 1. Validações iniciais (Mantidas iguais)
+    if (!hospitalId || !linkingDoctor?.users?.id) return;
+
+    setError(null);
+    setActionMessage(null);
+
+    // Só admin/coordenador pode vincular
+    if (!(myRole === 'admin' || myRole === 'coordenador')) {
+      setError('Apenas Administrador ou Coordenador pode vincular médicos em outro hospital.');
+      return;
+    }
+
+    if (!linkToHospitalId) {
+      setError('Selecione o hospital destino.');
+      return;
+    }
+
+    if (linkToHospitalId === hospitalId) {
+      setError('Escolha um hospital destino diferente do hospital atual.');
+      return;
+    }
+
+    setLinkingToOther(true);
+
+    // 2. AQUI ENTRA O PATCH (Substituindo o .insert pelo .rpc)
+    try {
+      const { error: rpcError } = await supabase.rpc('link_doctor_securely', {
+        target_hospital_id: linkToHospitalId,
+        target_user_id: linkingDoctor.users.id,
+        target_role: linkingDoctor.role, // Mantém o mesmo papel atual
+      });
+
+      if (rpcError) {
+        const msg = (rpcError as any)?.message ?? 'Erro ao vincular.';
+        const lower = String(msg).toLowerCase();
+
+        // Tratamento para duplicidade
+        if (lower.includes('duplicate') || lower.includes('unique') || lower.includes('violate')) {
+          setError('Esse médico já está vinculado ao hospital destino.');
+          return;
+        }
+
+        setError('Não foi possível vincular: ' + msg);
+        return;
+      }
+
+      // Sucesso
+      const targetName =
+        hospitals.find((h) => h.id === linkToHospitalId)?.name ?? 'hospital destino';
+
+      setActionMessage(`Médico vinculado com sucesso em "${targetName}".`);
+      setLinkingDoctor(null);
+      setLinkToHospitalId('');
+
+    } catch (err: any) {
+      setError('Erro inesperado: ' + (err.message || String(err)));
+    } finally {
+      setLinkingToOther(false);
+    }
   }
 
   // =========================
@@ -343,7 +418,62 @@ export default function MedicosPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 relative">
+  <div className="min-h-screen flex flex-col bg-slate-100 relative">
+
+    {/* MODAL: VINCULAR EM OUTRO HOSPITAL */}
+    {linkingDoctor && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+          <h3 className="text-lg font-bold mb-2 text-slate-800">Vincular em outro hospital</h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Médico:{' '}
+            <span className="font-medium">
+              {linkingDoctor.users?.full_name ?? 'Sem nome'}
+            </span>
+          </p>
+
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            Hospital destino
+          </label>
+
+          <select
+            value={linkToHospitalId}
+            onChange={(e) => setLinkToHospitalId(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            disabled={linkingToOther}
+          >
+            <option value="">Selecione...</option>
+            {hospitals
+              .filter((h) => h.id !== hospitalId)
+              .map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name ?? h.id}
+                </option>
+              ))}
+          </select>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <button
+              type="button"
+              onClick={() => setLinkingDoctor(null)}
+              className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+              disabled={linkingToOther}
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLinkDoctorToOtherHospital}
+              className="px-4 py-2 text-xs font-medium bg-slate-900 text-white hover:bg-slate-800 rounded-lg disabled:opacity-50"
+              disabled={linkingToOther || !linkToHospitalId}
+            >
+              {linkingToOther ? 'Vinculando...' : 'Vincular'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
       {/* MODAL DE EDIÇÃO (OVERLAY) */}
       {editingDoctor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -591,23 +721,32 @@ export default function MedicosPage() {
                           {new Date(doctor.created_at).toLocaleDateString('pt-BR')}
                         </td>
                         <td className="py-2 pr-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => openEditModal(doctor)}
-                              className="text-[11px] px-2 py-1 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50"
-                            >
-                              Editar
-                            </button>
+  <div className="flex justify-end gap-2">
+    <button
+      onClick={() => openLinkModal(doctor)}
+      className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      disabled={!(myRole === 'admin' || myRole === 'coordenador')}
+      title={!(myRole === 'admin' || myRole === 'coordenador') ? 'Sem permissão' : 'Vincular em outro hospital'}
+    >
+      Vincular
+    </button>
 
-                            <button
-                              onClick={() => handleRemoveDoctor(doctor.id)}
-                              disabled={removingId === doctor.id}
-                              className="text-[11px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                            >
-                              {removingId === doctor.id ? '...' : 'Remover'}
-                            </button>
-                          </div>
-                        </td>
+    <button
+      onClick={() => openEditModal(doctor)}
+      className="text-[11px] px-2 py-1 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50"
+    >
+      Editar
+    </button>
+
+    <button
+      onClick={() => handleRemoveDoctor(doctor.id)}
+      disabled={removingId === doctor.id}
+      className="text-[11px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+    >
+      {removingId === doctor.id ? '...' : 'Remover'}
+    </button>
+  </div>
+</td>
                       </tr>
                     ))}
                   </tbody>

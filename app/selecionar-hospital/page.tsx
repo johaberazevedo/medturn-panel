@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
 type HospitalPickRow = {
@@ -11,12 +11,17 @@ type HospitalPickRow = {
   is_admin?: boolean | null;
 };
 
-export default function SelecionarHospitalPage() {
+// Componente interno que usa useSearchParams (precisa de Suspense)
+function SelecionarHospitalContent() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // ✅ Agora seguro dentro do Suspense
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<HospitalPickRow[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const rawRedirect = searchParams.get('redirect');
+  const redirect = rawRedirect && rawRedirect.startsWith('/') ? rawRedirect : '/dashboard';
 
   useEffect(() => {
     async function load() {
@@ -54,11 +59,30 @@ export default function SelecionarHospitalPage() {
     load();
   }, [router]);
 
-  function choose(hospitalId: string) {
+  async function choose(hospitalId: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
+
     if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`activeHospitalId:${user.id}`, hospitalId);
       window.localStorage.setItem('activeHospitalId', hospitalId);
     }
-    router.push('/dashboard');
+
+    let next = redirect;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(redirect, window.location.origin);
+        if (!url.searchParams.get('hospitalId')) {
+          url.searchParams.set('hospitalId', hospitalId);
+        }
+        next = url.pathname + url.search + url.hash;
+      } catch {
+        next = redirect;
+      }
+    }
+
+    router.push(next);
   }
 
   if (loading) {
@@ -117,9 +141,18 @@ export default function SelecionarHospitalPage() {
         )}
 
         <div className="mt-6 text-[11px] text-slate-500">
-          Dica: você pode trocar de hospital depois limpando/alterando o <code className="px-1 py-0.5 bg-white border rounded">activeHospitalId</code> no navegador.
+          Você poderá trocar de hospital novamente a qualquer momento pelo menu.
         </div>
       </main>
     </div>
+  );
+}
+
+// Componente "Casca" que envolve o conteúdo em Suspense
+export default function SelecionarHospitalPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-sm text-slate-500">Carregando seleção...</div>}>
+      <SelecionarHospitalContent />
+    </Suspense>
   );
 }

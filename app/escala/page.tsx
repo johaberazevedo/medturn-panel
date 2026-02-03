@@ -146,7 +146,7 @@ export default function EscalaMensalPage() {
 
 const storedHospitalId =
   typeof window !== 'undefined'
-    ? window.localStorage.getItem('activeHospitalId')
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
     : null;
 
 if (!storedHospitalId) {

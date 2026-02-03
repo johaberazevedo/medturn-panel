@@ -49,6 +49,8 @@ function MedicoDisponibilidadeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+const urlHospitalId = searchParams.get('hospitalId');
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -142,27 +144,52 @@ function MedicoDisponibilidadeContent() {
       if (!user) { router.push('/login'); return; }
       setUserId(user.id);
 
-      const { data: membership } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, hospitals(name)')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const { data: memberships, error: memErr } = await supabase
+  .from('hospital_users')
+  .select('hospital_id, created_at, hospitals(name)')
+  .eq('user_id', user.id)
+  .order('created_at', { ascending: true });
 
-      if (!membership) {
-        setErrorMsg('Hospital não encontrado.');
-        setLoading(false);
-        return;
-      }
+if (memErr) {
+  console.error(memErr);
+  setErrorMsg('Erro ao carregar hospitais.');
+  setLoading(false);
+  return;
+}
 
-      // CORREÇÃO 2: Normaliza o objeto membership (trata array do Supabase)
-      const raw = membership as any;
-      const m: MembershipRow = {
-        hospital_id: raw.hospital_id,
-        hospitals: Array.isArray(raw.hospitals) ? raw.hospitals[0] : raw.hospitals
-      };
+const list = (memberships ?? []).map((m: any) => ({
+  hospital_id: m.hospital_id as string,
+  hospital_name: (Array.isArray(m.hospitals) ? m.hospitals[0]?.name : m.hospitals?.name) as string | null,
+}));
 
-      setHospitalId(m.hospital_id);
-      setHospitalName(m.hospitals?.name ?? 'Hospital');
+if (!list.length) {
+  setErrorMsg('Hospital não encontrado.');
+  setLoading(false);
+  return;
+}
+
+// prioridade: URL > localStorage por usuário > primeiro da lista
+let preferred: string | null = urlHospitalId;
+
+if (!preferred && typeof window !== 'undefined') {
+  preferred = window.localStorage.getItem(`activeHospitalId:${user.id}`);
+}
+
+const chosenId =
+  (preferred && list.some(x => x.hospital_id === preferred))
+    ? preferred
+    : list[0].hospital_id;
+
+const chosenName =
+  list.find(x => x.hospital_id === chosenId)?.hospital_name ?? 'Hospital';
+
+setHospitalId(chosenId);
+setHospitalName(chosenName);
+
+// persiste para manter consistência com o resto do app
+if (typeof window !== 'undefined') {
+  window.localStorage.setItem(`activeHospitalId:${user.id}`, chosenId);
+}
 
       const initialDate = searchParams.get('date') || todayISODate();
       setDateStr(initialDate);
@@ -170,11 +197,10 @@ function MedicoDisponibilidadeContent() {
       setBulkEndDate(initialDate);
 
       await Promise.all([
-        loadAvailability(m.hospital_id, user.id, initialDate),
-        loadDayShifts(m.hospital_id, user.id, initialDate),
-        loadDoctors(m.hospital_id, user.id),
-      ]);
-
+  loadAvailability(chosenId, user.id, initialDate),
+  loadDayShifts(chosenId, user.id, initialDate),
+  loadDoctors(chosenId, user.id),
+]);
       setLoading(false);
     }
     init();

@@ -64,6 +64,15 @@ export default function MedicoHomePage() {
           onClick={() => router.push('/medico/calendario')}
         />
 
+        {/* 🙈 ESCONDENDO CHECK-IN POR ENQUANTO
+        <MenuCard
+          title="Check-in"
+          desc="Confirme sua presença no turno de hoje."
+          icon="🟢"
+          onClick={() => router.push('/medico/checkin')}
+        />
+        */}
+
         <MenuCard 
           title="Trocas e Disponibilidade" 
           desc="Informe os dias que pode trabalhar e solicite trocas."
@@ -71,7 +80,7 @@ export default function MedicoHomePage() {
           onClick={() => router.push('/medico/disponibilidade')}
         />
 
-<MenuCard 
+        <MenuCard 
           title="Solicitações e Propostas" 
           desc="Veja solicitações recebidas e o status das suas." 
           icon="🤝" 
