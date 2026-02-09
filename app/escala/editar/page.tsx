@@ -352,7 +352,7 @@ async function loadDoctors(hospital_id: string) {
 
       // 3. O PULO DO GATO: Força o navegador a recarregar a página do zero
       // Isso limpa qualquer cache e garante que o médico suma da visualização
-      window.location.href = '/escala';
+      window.location.href = `/escala?date=${dateParam}`;
 
     } catch (err: any) {
       setErrorMsg('Erro inesperado ao salvar.');
@@ -450,7 +450,7 @@ async function loadDoctors(hospital_id: string) {
             <h1 className="text-lg font-semibold">Editar plantões do dia</h1>
             <p className="text-xs text-slate-500">{formattedDate}</p>
           </div>
-          <button onClick={() => router.push('/escala')} className="text-xs border px-3 py-1.5 rounded-lg hover:bg-slate-50">
+          <button onClick={() => router.push(`/escala?date=${dateParam}`)} className="text-xs border px-3 py-1.5 rounded-lg hover:bg-slate-50">
             Voltar para escala
           </button>
         </div>

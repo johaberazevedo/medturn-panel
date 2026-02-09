@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation'; // Adicionado useSearchParams
+import { useEffect, useState, Suspense } from 'react';        // Adicionado Suspense
 import { supabase } from '@/lib/supabaseClient';
 
 type ShiftRow = {
@@ -30,16 +30,40 @@ const PERIOD_CONFIG: {
   { key: '24h', label: '24H', short: '24H', maxDoctors: 6 },
 ];
 
-export default function EscalaMensalPage() {
+// 1. Removemos o "export default" e mudamos o nome para Content
+function EscalaMensalContent() { 
   const router = useRouter();
+  const searchParams = useSearchParams(); // 2. Pegamos os parametros da URL
 
   const [hospitalId, setHospitalId] = useState<string | null>(null);
   const [hospitalName, setHospitalName] = useState<string>('');
   const [userName, setUserName] = useState<string | null>(null);
 
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  // 3. Lógica para definir Data Inicial (URL ou Hoje)
+  const dateParam = searchParams.get('date');
+  
+  const getInitialDate = () => {
+    if (dateParam) {
+      const [yStr, mStr] = dateParam.split('-'); // Espera formato YYYY-MM-DD
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      
+      // Valida se vieram números reais
+      if (!isNaN(y) && !isNaN(m)) {
+        // Retorna o mês (m-1 pois no JS janeiro é 0)
+        return { year: y, month: m - 1 };
+      }
+    }
+    // Se não tiver data na URL, usa hoje
+    const today = new Date();
+    return { year: today.getFullYear(), month: today.getMonth() };
+  };
+
+  const initial = getInitialDate();
+
+  // 4. Inicializa o estado com os valores calculados
+  const [year, setYear] = useState(initial.year);
+  const [month, setMonth] = useState(initial.month);
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -576,5 +600,13 @@ setLoading(false);
         </div>
       </main>
     </div>
+  );
+}
+// Componente Wrapper para lidar com o Suspense
+export default function EscalaMensalPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-100 flex items-center justify-center">Carregando calendário...</div>}>
+      <EscalaMensalContent />
+    </Suspense>
   );
 }
