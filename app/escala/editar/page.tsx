@@ -12,8 +12,10 @@ type DoctorOption = {
 
 // Estrutura para o Slot da escala
 type ShiftSlot = {
+  shiftId: number | null;
   userId: string;
   isChief: boolean;
+  badge: string;
 };
 
 type ShiftRow = {
@@ -21,6 +23,7 @@ type ShiftRow = {
   period: 'manha' | 'tarde' | 'noite' | '24h';
   doctor_user_id: string | null;
   is_chief: boolean;
+  badge: string | null;
 };
 
 type AvailabilityRow = {
@@ -50,13 +53,16 @@ function EditarPlantaoContent() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+// PATCH: controla se o input do badge está “aberto” por linha
+const [badgeOpen, setBadgeOpen] = useState<Record<string, boolean>>({});
+
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
 
   // Slots de cada período
-  const [manhaDoctors, setManhaDoctors] = useState<ShiftSlot[]>([{ userId: '', isChief: false }]);
-  const [tardeDoctors, setTardeDoctors] = useState<ShiftSlot[]>([{ userId: '', isChief: false }]);
-  const [noiteDoctors, setNoiteDoctors] = useState<ShiftSlot[]>([{ userId: '', isChief: false }]);
-  const [fullDayDoctors, setFullDayDoctors] = useState<ShiftSlot[]>([{ userId: '', isChief: false }]);
+  const [manhaDoctors, setManhaDoctors] = useState<ShiftSlot[]>([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+  const [tardeDoctors, setTardeDoctors] = useState<ShiftSlot[]>([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+  const [noiteDoctors, setNoiteDoctors] = useState<ShiftSlot[]>([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+  const [fullDayDoctors, setFullDayDoctors] = useState<ShiftSlot[]>([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
 
   const [copyTargetDate, setCopyTargetDate] = useState<string>('');
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
@@ -71,7 +77,6 @@ function EditarPlantaoContent() {
     return <div>Data inválida.</div>;
   }
 
-  // Parse de data corrigido para evitar fuso horário
   const [yearStr, monthStr, dayStr] = dateParam.split('-');
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10) - 1;
@@ -90,62 +95,62 @@ function EditarPlantaoContent() {
   });
 
   async function loadHospitalFromStorage() {
-  const storedHospitalId =
-    typeof window !== 'undefined'
-      ? window.localStorage.getItem('activeHospitalId')
-      : null;
+    const storedHospitalId =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem('activeHospitalId')
+        : null;
 
-  if (!storedHospitalId) {
-    router.push('/selecionar-hospital');
-    return null;
+    if (!storedHospitalId) {
+      router.push('/selecionar-hospital');
+      return null;
+    }
+
+    const { data: hosp, error: hospError } = await supabase
+      .from('hospitals')
+      .select('id, name')
+      .eq('id', storedHospitalId)
+      .maybeSingle();
+
+    if (hospError || !hosp) {
+      setErrorMsg('Não foi possível identificar o hospital selecionado.');
+      return null;
+    }
+
+    setHospitalId(hosp.id);
+    setHospitalName(hosp.name ?? 'Hospital');
+
+    return hosp.id as string;
   }
 
-  const { data: hosp, error: hospError } = await supabase
-    .from('hospitals')
-    .select('id, name')
-    .eq('id', storedHospitalId)
-    .maybeSingle();
+  async function loadDoctors(hospital_id: string) {
+    const { data: rows, error } = await supabase
+      .from('hospital_users')
+      .select('user_id, users(full_name, email)')
+      .eq('hospital_id', hospital_id)
+      .order('created_at', { ascending: true });
 
-  if (hospError || !hosp) {
-    setErrorMsg('Não foi possível identificar o hospital selecionado.');
-    return null;
+    if (error) {
+      setErrorMsg('Erro ao carregar médicos do hospital.');
+      setDoctors([]);
+      return;
+    }
+
+    const mapped: DoctorOption[] = (rows ?? []).map((row: any) => {
+      const userObj = Array.isArray(row.users) ? row.users[0] : row.users;
+      return {
+        id: row.user_id,
+        name: userObj?.full_name ?? userObj?.email ?? 'Médico sem nome',
+        email: userObj?.email ?? null,
+      };
+    });
+
+    setDoctors(mapped);
   }
-
-  setHospitalId(hosp.id);
-  setHospitalName(hosp.name ?? 'Hospital');
-
-  return hosp.id as string;
-}
-
-async function loadDoctors(hospital_id: string) {
-  const { data: rows, error } = await supabase
-    .from('hospital_users')
-    .select('user_id, users(full_name, email)')
-    .eq('hospital_id', hospital_id)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    setErrorMsg('Erro ao carregar médicos do hospital.');
-    setDoctors([]);
-    return;
-  }
-
-  const mapped: DoctorOption[] = (rows ?? []).map((row: any) => {
-    const userObj = Array.isArray(row.users) ? row.users[0] : row.users;
-    return {
-      id: row.user_id,
-      name: userObj?.full_name ?? userObj?.email ?? 'Médico sem nome',
-      email: userObj?.email ?? null,
-    };
-  });
-
-  setDoctors(mapped);
-}
 
   async function loadShiftsForDay(hospital_id: string) {
     const { data, error } = await supabase
       .from('shifts')
-      .select('id, period, doctor_user_id, is_chief')
+      .select('id, period, doctor_user_id, is_chief, badge')
       .eq('hospital_id', hospital_id)
       .eq('date', dateParam);
 
@@ -158,10 +163,13 @@ async function loadDoctors(hospital_id: string) {
 
     const mapToState = (periodKey: string): ShiftSlot[] => {
       const filtered = rows.filter((r) => r.period === periodKey);
-      if (filtered.length === 0) return [{ userId: '', isChief: false }];
-      return filtered.map(r => ({
+      if (filtered.length === 0) return [{ shiftId: null, userId: '', isChief: false, badge: '' }];
+      
+      return filtered.map((r) => ({
+        shiftId: r.id,
         userId: r.doctor_user_id ?? '',
-        isChief: r.is_chief ?? false
+        isChief: r.is_chief ?? false,
+        badge: r.badge ?? '',
       }));
     };
 
@@ -186,23 +194,23 @@ async function loadDoctors(hospital_id: string) {
   }
 
   useEffect(() => {
-  async function init() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      const hospital_id = await loadHospitalFromStorage();
+      if (!hospital_id) return;
+
+      await loadDoctors(hospital_id);
+      await loadShiftsForDay(hospital_id);
+      await loadAvailabilityForDay(hospital_id);
     }
 
-    const hospital_id = await loadHospitalFromStorage();
-    if (!hospital_id) return;
-
-    await loadDoctors(hospital_id);
-    await loadShiftsForDay(hospital_id);
-    await loadAvailabilityForDay(hospital_id);
-  }
-
-  init();
-}, [dateParam, router]);
+    init();
+  }, [dateParam, router]);
 
   function handleDoctorChange(
     period: 'manha' | 'tarde' | 'noite' | '24h',
@@ -242,10 +250,48 @@ async function loadDoctors(hospital_id: string) {
     }
   }
 
+  function handleBadgeChange(
+    period: 'manha' | 'tarde' | 'noite' | '24h',
+    index: number,
+    text: string
+  ) {
+    const cleanText = text
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 4);
+
+    const update = (arr: ShiftSlot[], setArr: (v: ShiftSlot[]) => void) => {
+      const copy = [...arr];
+      copy[index] = { ...copy[index], badge: cleanText };
+      setArr(copy);
+    };
+
+    switch (period) {
+      case 'manha': update(manhaDoctors, setManhaDoctors); break;
+      case 'tarde': update(tardeDoctors, setTardeDoctors); break;
+      case 'noite': update(noiteDoctors, setNoiteDoctors); break;
+      case '24h': update(fullDayDoctors, setFullDayDoctors); break;
+    }
+  }
+function badgeKey(period: 'manha' | 'tarde' | 'noite' | '24h', index: number) {
+  return `${period}-${index}`;
+}
+
+function openBadge(period: 'manha' | 'tarde' | 'noite' | '24h', index: number) {
+  const k = badgeKey(period, index);
+  setBadgeOpen((prev) => ({ ...prev, [k]: true }));
+}
+
+function closeBadgeIfEmpty(period: 'manha' | 'tarde' | 'noite' | '24h', index: number, currentBadge: string) {
+  const k = badgeKey(period, index);
+  if ((currentBadge ?? '').trim().length === 0) {
+    setBadgeOpen((prev) => ({ ...prev, [k]: false }));
+  }
+}
   function handleAddDoctor(period: 'manha' | 'tarde' | 'noite' | '24h') {
     const addTo = (arr: ShiftSlot[], setArr: (v: ShiftSlot[]) => void, max: number) => {
       if (arr.length >= max) return;
-      setArr([...arr, { userId: '', isChief: false }]);
+      setArr([...arr, { shiftId: null, userId: '', isChief: false, badge: '' }]);
     };
 
     const config = PERIODS.find((p) => p.key === period);
@@ -263,7 +309,7 @@ async function loadDoctors(hospital_id: string) {
     const removeFrom = (arr: ShiftSlot[], setArr: (v: ShiftSlot[]) => void) => {
       const copy = [...arr];
       copy.splice(index, 1);
-      if (copy.length === 0) copy.push({ userId: '', isChief: false });
+      if (copy.length === 0) copy.push({ shiftId: null, userId: '', isChief: false, badge: '' });
       setArr(copy);
     };
 
@@ -275,26 +321,211 @@ async function loadDoctors(hospital_id: string) {
     }
   }
 
-  async function handleClearAll() {
+  function handleClearAll() {
     if (!hospitalId) return;
-    setSaving(true);
-    setErrorMsg(null);
+    // Note: Mantive a função de limpar visualmente, 
+    // mas se quiser limpar o banco direto teria que chamar o sync vazio.
+    // Mas para manter a UX do usuário clicar e depois "Salvar", mantemos assim:
+    setManhaDoctors([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+    setTardeDoctors([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+    setNoiteDoctors([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+    setFullDayDoctors([{ shiftId: null, userId: '', isChief: false, badge: '' }]);
+  }
 
-    const { error } = await supabase
+  // --- NOVAS FUNÇÕES DE SYNC E COPY ---
+
+  function toDbBadge(badge: string): string | null {
+    const v = (badge ?? '').trim();
+    return v.length > 0 ? v.slice(0, 4).toUpperCase() : null;
+  }
+
+  function buildDesiredRows(dateStr: string) {
+    if (!hospitalId) return [];
+
+    const desired: Array<{
+      shiftId: number | null;
+      hospital_id: string;
+      date: string;
+      period: 'manha' | 'tarde' | 'noite' | '24h';
+      doctor_user_id: string;
+      is_chief: boolean;
+      badge: string | null;
+    }> = [];
+
+    const push = (arr: ShiftSlot[], period: 'manha' | 'tarde' | 'noite' | '24h') => {
+      for (const slot of arr) {
+        const uid = (slot.userId ?? '').trim();
+        if (!uid) continue;
+
+        desired.push({
+          shiftId: slot.shiftId ?? null,
+          hospital_id: hospitalId,
+          date: dateStr,
+          period,
+          doctor_user_id: uid,
+          is_chief: !!slot.isChief,
+          badge: toDbBadge(slot.badge),
+        });
+      }
+    };
+
+    push(manhaDoctors, 'manha');
+    push(tardeDoctors, 'tarde');
+    push(noiteDoctors, 'noite');
+    push(fullDayDoctors, '24h');
+
+    return desired;
+  }
+
+  async function syncShiftsForDay(dateStr: string) {
+    if (!hospitalId) return;
+
+    // 1) Carrega o que existe no banco (dia/hospital)
+    const { data: existing, error: loadErr } = await supabase
       .from('shifts')
-      .delete()
+      .select('id, period, doctor_user_id, is_chief, badge')
       .eq('hospital_id', hospitalId)
-      .eq('date', dateParam);
+      .eq('date', dateStr);
 
-    if (error) {
-      setErrorMsg('Erro ao limpar os plantões do dia.');
-    } else {
-      setManhaDoctors([{ userId: '', isChief: false }]);
-      setTardeDoctors([{ userId: '', isChief: false }]);
-      setNoiteDoctors([{ userId: '', isChief: false }]);
-      setFullDayDoctors([{ userId: '', isChief: false }]);
+    if (loadErr) throw loadErr;
+
+    const existingRows = (existing ?? []) as ShiftRow[];
+    // const existingById = new Map<number, ShiftRow>();
+    // for (const r of existingRows) existingById.set(r.id, r);
+
+    // 2) Monta o “desejado” a partir do estado
+    const desired = buildDesiredRows(dateStr);
+
+    // 3) Atualiza o que tem shiftId e insere o que não tem
+    const desiredIds = new Set<number>();
+
+    for (const row of desired) {
+      if (row.shiftId) {
+        desiredIds.add(row.shiftId);
+
+        const { error: updErr } = await supabase
+          .from('shifts')
+          .update({
+            period: row.period,
+            doctor_user_id: row.doctor_user_id,
+            is_chief: row.is_chief,
+            badge: row.badge, // null quando vazio (importante)
+          })
+          .eq('id', row.shiftId)
+          .eq('hospital_id', hospitalId);
+
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from('shifts')
+          .insert([{
+            hospital_id: row.hospital_id,
+            date: row.date,
+            period: row.period,
+            doctor_user_id: row.doctor_user_id,
+            is_chief: row.is_chief,
+            badge: row.badge, // null quando vazio
+          }]);
+
+        if (insErr) throw insErr;
+      }
     }
-    setSaving(false);
+
+    // 4) Deleta o que existe no banco mas não está mais no estado (remoções reais)
+    const toDeleteIds: number[] = [];
+    for (const r of existingRows) {
+      if (!desiredIds.has(r.id)) {
+        toDeleteIds.push(r.id);
+      }
+    }
+
+    if (toDeleteIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('hospital_id', hospitalId)
+        .in('id', toDeleteIds);
+
+      if (delErr) throw delErr;
+    }
+  }
+
+  async function copyShiftsToDate(targetDate: string) {
+    if (!hospitalId) return;
+
+    // 1) Carrega o que existe no destino
+    const { data: existing, error: loadErr } = await supabase
+      .from('shifts')
+      .select('id, period, doctor_user_id, is_chief, badge')
+      .eq('hospital_id', hospitalId)
+      .eq('date', targetDate);
+
+    if (loadErr) throw loadErr;
+
+    const existingRows = (existing ?? []) as ShiftRow[];
+
+    // 2) “Desired” baseado no estado atual, mas SEM shiftId
+    const desired = buildDesiredRows(targetDate).map((r) => ({ ...r, shiftId: null }));
+
+    // 3) Estratégia simples e segura pro copy:
+    // - Atualiza/insere baseado em (period + doctor_user_id) como “chave lógica”
+    // - Remove do destino o que não existe mais no desired
+    const key = (r: { period: string; doctor_user_id: string }) => `${r.period}::${r.doctor_user_id}`;
+
+    const existingByKey = new Map<string, ShiftRow>();
+    for (const r of existingRows) existingByKey.set(key({ period: r.period, doctor_user_id: r.doctor_user_id ?? '' }), r);
+
+    const desiredKeys = new Set<string>();
+
+    for (const r of desired) {
+      const k = key({ period: r.period, doctor_user_id: r.doctor_user_id });
+      desiredKeys.add(k);
+
+      const match = existingByKey.get(k);
+
+      if (match) {
+        const { error: updErr } = await supabase
+          .from('shifts')
+          .update({
+            is_chief: r.is_chief,
+            badge: r.badge,
+          })
+          .eq('id', match.id)
+          .eq('hospital_id', hospitalId);
+
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from('shifts')
+          .insert([{
+            hospital_id: hospitalId,
+            date: targetDate,
+            period: r.period,
+            doctor_user_id: r.doctor_user_id,
+            is_chief: r.is_chief,
+            badge: r.badge,
+          }]);
+
+        if (insErr) throw insErr;
+      }
+    }
+
+    // remover do destino o que não está mais no desired
+    const toDeleteIds: number[] = [];
+    for (const r of existingRows) {
+      const k = key({ period: r.period, doctor_user_id: r.doctor_user_id ?? '' });
+      if (!desiredKeys.has(k)) toDeleteIds.push(r.id);
+    }
+
+    if (toDeleteIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('hospital_id', hospitalId)
+        .in('id', toDeleteIds);
+
+      if (delErr) throw delErr;
+    }
   }
 
   async function handleSave() {
@@ -302,63 +533,16 @@ async function loadDoctors(hospital_id: string) {
     setSaving(true);
     setErrorMsg(null);
 
-    const toInsert: any[] = [];
-
-    const pushNonEmpty = (arr: ShiftSlot[], period: 'manha' | 'tarde' | 'noite' | '24h') => {
-      for (const slot of arr) {
-        if (slot.userId && slot.userId !== '') {
-          toInsert.push({
-            hospital_id: hospitalId,
-            date: dateParam!,
-            period,
-            doctor_user_id: slot.userId,
-            is_chief: slot.isChief,
-          });
-        }
-      }
-    };
-
-    pushNonEmpty(manhaDoctors, 'manha');
-    pushNonEmpty(tardeDoctors, 'tarde');
-    pushNonEmpty(noiteDoctors, 'noite');
-    pushNonEmpty(fullDayDoctors, '24h');
-
     try {
-      // 1. Deleta tudo desse dia
-      const { error: delError } = await supabase
-        .from('shifts')
-        .delete()
-        .eq('hospital_id', hospitalId)
-        .eq('date', dateParam);
+      await syncShiftsForDay(dateParam!);
 
-      if (delError) {
-        setErrorMsg('Erro ao limpar registros antigos.');
-        setSaving(false);
-        return;
-      }
-
-      // 2. Insere os novos (se houver algum)
-      if (toInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('shifts')
-          .insert(toInsert);
-
-        if (insertError) {
-          setErrorMsg(`Erro ao salvar: ${insertError.message}`);
-          setSaving(false);
-          return;
-        }
-      }
-
-      // 3. O PULO DO GATO: Força o navegador a recarregar a página do zero
-      // Isso limpa qualquer cache e garante que o médico suma da visualização
+      // recarrega como você já fazia (bom porque re-hidrata shiftId e estado)
       window.location.href = `/escala?date=${dateParam}`;
-
     } catch (err: any) {
-      setErrorMsg('Erro inesperado ao salvar.');
+      setErrorMsg(`Erro ao salvar: ${err?.message ?? 'desconhecido'}`);
       setSaving(false);
     }
-  }	
+  }
 
   async function handleCopyToDate() {
     if (!hospitalId) return;
@@ -366,52 +550,18 @@ async function loadDoctors(hospital_id: string) {
       setErrorMsg('Informe a data de destino para copiar a escala.');
       return;
     }
+
     setSaving(true);
     setErrorMsg(null);
 
-    const toInsert: any[] = [];
-
-    const pushNonEmpty = (arr: ShiftSlot[], period: string) => {
-      for (const slot of arr) {
-        if (slot.userId && slot.userId !== '') {
-          toInsert.push({
-            hospital_id: hospitalId,
-            date: copyTargetDate,
-            period,
-            doctor_user_id: slot.userId,
-            is_chief: slot.isChief,
-          });
-        }
-      }
-    };
-
-    pushNonEmpty(manhaDoctors, 'manha');
-    pushNonEmpty(tardeDoctors, 'tarde');
-    pushNonEmpty(noiteDoctors, 'noite');
-    pushNonEmpty(fullDayDoctors, '24h');
-
     try {
-      const { error: delError } = await supabase
-        .from('shifts')
-        .delete()
-        .eq('hospital_id', hospitalId)
-        .eq('date', copyTargetDate);
+      // Estratégia: copiar o “desejado” do dia atual para o destino
+      await copyShiftsToDate(copyTargetDate);
 
-      if (delError) return;
-
-      if (toInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('shifts')
-          .insert(toInsert);
-        if (insertError) {
-            setErrorMsg(`Erro: ${insertError.message}`);
-            setSaving(false);
-            return;
-        }
-      }
       setSaving(false);
       alert('Copiado com sucesso!');
     } catch (err: any) {
+      setErrorMsg(`Erro ao copiar: ${err?.message ?? 'desconhecido'}`);
       setSaving(false);
     }
   }
@@ -504,6 +654,45 @@ async function loadDoctors(hospital_id: string) {
 
                         {/* Controles (CH + Badge + Remover) */}
                         <div className="flex items-center gap-2 justify-between sm:justify-end shrink-0">
+                          
+                          {/* BADGE (só aparece se existir; senão, mostra gatilho 🏷️) */}
+                          {badgeOpen[badgeKey(p.key as any, index)] ? (
+  <label
+    title="Badge (até 4)"
+    className="flex items-center gap-1 border rounded px-1.5 py-1 transition bg-slate-800 border-slate-800 text-white"
+  >
+    <input
+      type="text"
+      inputMode="text"
+      maxLength={4}
+      value={slot.badge}
+      onChange={(e) => handleBadgeChange(p.key as any, index, e.target.value)}
+      onBlur={() => closeBadgeIfEmpty(p.key as any, index, slot.badge)}
+      autoFocus
+      className="w-10 bg-transparent outline-none text-[9px] font-bold uppercase tracking-wide text-center"
+    />
+  </label>
+) : slot.badge?.trim() ? (
+  // badge existe, mas não está em edição: mostra “chip” clicável
+  <button
+    type="button"
+    title="Editar badge"
+    onClick={() => openBadge(p.key as any, index)}
+    className="text-[9px] px-2 py-1 rounded border bg-blue-50 border-blue-200 text-blue-700 font-bold uppercase"
+  >
+    {slot.badge}
+  </button>
+) : (
+  // não tem badge e não está em edição: mostra gatilho 🏷️
+  <button
+    type="button"
+    title="Adicionar badge"
+    onClick={() => openBadge(p.key as any, index)}
+    className="w-6 h-6 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:border-slate-400 transition"
+  >
+    <span className="text-[10px] font-bold">🏷️</span>
+  </button>
+)}
                           
                           {/* Checkbox CH */}
                           <label 

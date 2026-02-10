@@ -8,7 +8,8 @@ type ShiftRow = {
   id: number;
   date: string;
   period: 'manha' | 'tarde' | 'noite' | '24h';
-  is_chief: boolean; 
+  is_chief: boolean;
+  badge: string | null; // PATCH
   users: { full_name: string | null } | null;
 };
 
@@ -123,12 +124,12 @@ function EscalaMensalContent() {
     const monthEnd = `${y}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
 
     const { data, error } = await supabase
-      .from('shifts')
-      .select('id, date, period, is_chief, users(full_name)')
-      .eq('hospital_id', hId)
-      .gte('date', monthStart)
-      .lte('date', monthEnd)
-      .order('date');
+  .from('shifts')
+  .select('id, date, period, is_chief, badge, users(full_name)') // PATCH
+  .eq('hospital_id', hId)
+  .gte('date', monthStart)
+  .lte('date', monthEnd)
+  .order('date');
 
     if (!error && data) {
       const formattedShifts = data.map((shift: any) => ({
@@ -535,12 +536,16 @@ setLoading(false);
                         const shiftsInPeriod = dayShifts
                           .filter((s) => s.period === cfg.key)
                           .sort((a, b) => {
-                            // Se a é chefe e b não, a vem primeiro (-1)
-                            if (a.is_chief && !b.is_chief) return -1;
-                            // Se b é chefe e a não, b vem primeiro (1)
-                            if (!a.is_chief && b.is_chief) return 1;
-                            return 0;
-                          });
+  if (a.is_chief && !b.is_chief) return -1;
+  if (!a.is_chief && b.is_chief) return 1;
+
+  const aHasBadge = !!(a.badge ?? '').trim();
+  const bHasBadge = !!(b.badge ?? '').trim();
+  if (aHasBadge && !bHasBadge) return -1;
+  if (!aHasBadge && bHasBadge) return 1;
+
+  return 0;
+});
 
                         if (shiftsInPeriod.length === 0) return null;
 
@@ -565,15 +570,28 @@ setLoading(false);
                                     {s.users?.full_name ?? 'Sem nome'}
                                   </span>
                                   
-                                  {/* Badge de Chefe */}
-                                  {s.is_chief && (
-                                    <span 
-                                      className="text-[8px] font-bold bg-slate-800 text-white px-1 rounded-[3px] leading-none py-0.5 mt-0.5"
-                                      title="Chefe de Plantão"
-                                    >
-                                      CH
-                                    </span>
-                                  )}
+                                  {/* Badges (Badge custom + CH) */}
+<div className="flex items-center gap-1 shrink-0 mt-0.5">
+  {/* Badge custom (só se tiver valor) */}
+  {!!(s.badge ?? '').trim() && (
+    <span
+      className="text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-1 rounded-[3px] leading-none py-0.5 uppercase"
+      title="Badge"
+    >
+      {(s.badge ?? '').trim().slice(0, 4).toUpperCase()}
+    </span>
+  )}
+
+  {/* CH (mantido igual, só mudando o wrapper) */}
+  {s.is_chief && (
+    <span
+      className="text-[8px] font-bold bg-slate-800 text-white px-1 rounded-[3px] leading-none py-0.5"
+      title="Chefe de Plantão"
+    >
+      CH
+    </span>
+  )}
+</div>
                                 </div>
                               ))}
                             </div>

@@ -11,6 +11,7 @@ type ShiftRow = {
   id: number; // ID do plantão (necessário para passar plantão)
   date: string;
   period: 'manha' | 'tarde' | 'noite' | '24h';
+  badge: string | null; // PATCH
 };
 
 // Nova tipagem completa para a equipe do dia
@@ -20,6 +21,7 @@ type FullShiftData = {
   period: 'manha' | 'tarde' | 'noite' | '24h';
   doctor_user_id: string;
   is_chief: boolean;
+  badge: string | null; // PATCH
   users: { full_name: string | null } | null;
 };
 
@@ -171,12 +173,12 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
 
   // 2) Meus plantões (todas)
   const { data: shiftsData } = await supabase
-    .from('shifts')
-    .select('id, date, period, hospital_id')
-    .in('hospital_id', hIds)
-    .eq('doctor_user_id', uId)
-    .gte('date', monthStart)
-    .lte('date', monthEnd);
+  .from('shifts')
+  .select('id, date, period, badge, hospital_id') // PATCH
+  .in('hospital_id', hIds)
+  .eq('doctor_user_id', uId)
+  .gte('date', monthStart)
+  .lte('date', monthEnd);
 
   const shiftsMap: MonthShifts = {};
   (shiftsData ?? []).forEach((row: any) => {
@@ -192,7 +194,7 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
       shiftsMap[d].push(group);
     }
 
-    group.shifts.push({ id: row.id, date: d, period });
+    group.shifts.push({ id: row.id, date: d, period, badge: row.badge ?? null }); // PATCH
   });
   setMonthShifts(shiftsMap);
 
@@ -239,11 +241,11 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
   setLoadingDayDetails(true);
 
   const { data, error } = await supabase
-    .from('shifts')
-    .select('id, date, period, doctor_user_id, is_chief, users(full_name)')
-    .eq('hospital_id', hId)
-    .eq('date', date)
-    .order('period');
+  .from('shifts')
+  .select('id, date, period, doctor_user_id, is_chief, badge, users(full_name)') // PATCH
+  .eq('hospital_id', hId)
+  .eq('date', date)
+  .order('period');
 
   if (!error && data) {
     const formatted = data.map((d: any) => ({
@@ -289,6 +291,14 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
 
   // 3️⃣ Fallback: nenhum relevante → deixa escolher entre todos
   setDayHospitals(hospitals);
+}
+
+// ✅ NOVO: força abrir o seletor com TODOS os hospitais, no MESMO dia
+function handleConsultarOutrosHospitais() {
+  if (!selectedDate) return;
+  setSelectedDateTeam([]);          // limpa equipe atual
+  setActiveDayHospitalId(null);     // volta pro modal de escolha
+  setDayHospitals(hospitals);       // mostra TODOS
 }
 
 function uniqById(list: HospitalMini[]) {
@@ -636,62 +646,95 @@ const myShifts = shiftGroup?.shifts ?? [];
                 </p>
 
                 {periodsConfig.map((pConf) => {
-                    const shiftsInPeriod = teamByPeriod[pConf.key] || [];
-                    if (shiftsInPeriod.length === 0) return null;
+  const shiftsInPeriod = teamByPeriod[pConf.key] || [];
+  if (shiftsInPeriod.length === 0) return null;
 
-                    return (
-                        <div key={pConf.key} className="mb-3 border rounded-lg overflow-hidden">
-                            <div className={`text-[10px] font-bold px-2 py-1 uppercase tracking-wide border-b ${pConf.color}`}>
-                                {pConf.label}
-                            </div>
-                            <div className="bg-white p-1 flex flex-col gap-1">
-                                {shiftsInPeriod.map(s => {
-                                    const isMe = s.doctor_user_id === userId;
+  return (
+    <div key={pConf.key} className="mb-3 border rounded-lg overflow-hidden">
+      <div className={`text-[10px] font-bold px-2 py-1 uppercase tracking-wide border-b ${pConf.color}`}>
+        {pConf.label}
+      </div>
 
-                                    return (
-                                        <div key={s.id} className={`flex items-center justify-between p-1.5 rounded ${isMe ? 'bg-blue-50 border border-blue-100' : 'bg-white'}`}>
-                                            <div className="flex items-center gap-1.5 overflow-hidden">
-                                                <span className={`text-xs truncate ${isMe ? 'font-bold text-blue-900' : 'text-slate-700'}`}>
-                                                    {s.users?.full_name ?? 'Sem nome'} {isMe && '(Você)'}
-                                                </span>
-                                                {s.is_chief && (
-                                                    <span className="text-[9px] font-bold bg-slate-800 text-white px-1 rounded py-0.5" title="Chefe de Plantão">
-                                                        CH
-                                                    </span>
-                                                )}
-                                            </div>
+      <div className="bg-white p-1 flex flex-col gap-1">
+        {shiftsInPeriod.map((s) => {
+          const isMe = s.doctor_user_id === userId;
+          const badgeText = (s.badge ?? '').trim().slice(0, 4).toUpperCase();
 
-                                            {/* Botão Passar Plantão (Apenas se for meu e não estiver em processamento) */}
-                                            {isMe && (
-                                                <button
-                                                    onClick={() => handlePassarPlantao(s.id)}
-                                                    disabled={!!processingId}
-                                                    className="shrink-0 text-[10px] text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
-                                                >
-                                                    {processingId === s.id ? '...' : 'Passar'}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-                    )
-                })}
+          return (
+            <div
+              key={s.id}
+              className={`flex items-center justify-between p-1.5 rounded ${
+                isMe ? 'bg-blue-50 border border-blue-100' : 'bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 overflow-hidden">
+                <span className={`text-xs truncate ${isMe ? 'font-bold text-blue-900' : 'text-slate-700'}`}>
+                  {s.users?.full_name ?? 'Sem nome'} {isMe && '(Você)'}
+                </span>
+
+                {/* BADGE (só aparece se existir) */}
+                {badgeText.length > 0 && (
+                  <span
+                    className="text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-1 rounded py-0.5 uppercase shrink-0"
+                    title="Badge"
+                  >
+                    {badgeText}
+                  </span>
+                )}
+
+                {/* CH (mantido igual) */}
+                {s.is_chief && (
+                  <span
+                    className="text-[9px] font-bold bg-slate-800 text-white px-1 rounded py-0.5 shrink-0"
+                    title="Chefe de Plantão"
+                  >
+                    CH
+                  </span>
+                )}
+              </div>
+
+              {/* Botão Passar Plantão (Apenas se for meu e não estiver em processamento) */}
+              {isMe && (
+                <button
+                  onClick={() => handlePassarPlantao(s.id)}
+                  disabled={!!processingId}
+                  className="shrink-0 text-[10px] text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
+                >
+                  {processingId === s.id ? '...' : 'Passar'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+})}
 
                 {!loadingDayDetails && selectedDateTeam.length === 0 && (
                      <p className="text-center text-xs text-slate-400 py-2">Nenhum médico escalado ainda.</p>
                 )}
             </div>
             
-            <div className="pt-2 border-t">
-                <button 
-                    onClick={() => router.push(`/medico/disponibilidade?date=${selectedDate}&hospitalId=${activeDayHospitalId}`)}
-                    className="w-full text-center text-xs text-blue-600 hover:underline py-1"
-                >
-                    Gerenciar minha disponibilidade neste dia →
-                </button>
-            </div>
+            <div className="pt-2 border-t space-y-2">
+  {/* ✅ NOVO: força escolher qualquer hospital */}
+  {hospitals.length > 1 && (
+    <button
+      type="button"
+      onClick={handleConsultarOutrosHospitais}
+      className="w-full text-center text-xs border rounded-lg py-2 bg-white hover:bg-slate-50 text-slate-700"
+    >
+      Consultar outros hospitais
+    </button>
+  )}
+
+  <button 
+    onClick={() => router.push(`/medico/disponibilidade?date=${selectedDate}&hospitalId=${activeDayHospitalId}`)}
+    className="w-full text-center text-xs text-blue-600 hover:underline py-1"
+  >
+    Gerenciar minha disponibilidade neste dia →
+  </button>
+</div>
           </div>
         </div>
       </div>
@@ -770,11 +813,22 @@ const hasOpp = oppGroups.some(g => g.opps.length > 0);
 
                         {/* Badges para MEUS turnos */}
                         {shiftGroups
-  .flatMap((g) => g.shifts.map((s) => ({ hid: g.hospital_id, period: s.period })))
+  .flatMap((g) =>
+    g.shifts.map((s) => ({
+      hid: g.hospital_id,
+      period: s.period,
+      badge: s.badge ?? null, // PATCH
+    }))
+  )
   .slice(0, 3)
   .map((x, i) => {
-    const badge = getPeriodBadge(x.period);
+    const pBadge = getPeriodBadge(x.period);
     const hex = getHospitalColor(x.hid, hospitalColorById);
+
+    const label =
+      (x.badge ?? '').trim()
+        ? (x.badge ?? '').trim().slice(0, 4).toUpperCase()
+        : pBadge.label;
 
     return (
       <span
@@ -787,7 +841,7 @@ const hasOpp = oppGroups.some(g => g.opps.length > 0);
           color: hex,
         }}
       >
-        {badge.label}
+        {label}
       </span>
     );
   })}
