@@ -339,18 +339,28 @@ setLoading(false);
               Check-in
             </button>
             */}
-            <button 
+                        <button 
               onClick={() => router.push('/medicos')} 
               className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
             >
               Gerenciar médicos
             </button>
+
+            {/* 🙈 ESCONDENDO ATÉ TERMINAR A LÓGICA
 <button
-  onClick={() => router.push('/selecionar-hospital')}
+  onClick={() => router.push('/relatorio')}
   className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
 >
-  Trocar hospital
+  Relatório de pagamento
 </button>
+*/}
+
+            <button
+              onClick={() => router.push('/selecionar-hospital')}
+              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+            >
+              Trocar hospital
+            </button>
           </div>
         </div>
       </header>
@@ -365,7 +375,10 @@ setLoading(false);
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Coluna Esquerda: Atalhos e Instruções */}
           <section className="lg:col-span-2 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+{/* TODO: Descomentar e alterar grid para sm:grid-cols-3 após finalizar /relatorio */}
+  {/* 🙈 ESCONDENDO ATÉ TERMINAR A LÓGICA ... */}
               <button 
                 onClick={() => router.push('/escala')} 
                 className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
@@ -373,6 +386,7 @@ setLoading(false);
                 <h2 className="text-sm font-semibold mb-1">Escala mensal</h2>
                 <p className="text-[11px] text-slate-500">Visualize e edite a escala de plantões.</p>
               </button>
+
               <button 
                 onClick={() => router.push('/medicos')} 
                 className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
@@ -380,6 +394,16 @@ setLoading(false);
                 <h2 className="text-sm font-semibold mb-1">Médicos do hospital</h2>
                 <p className="text-[11px] text-slate-500">Gerencie o quadro de profissionais.</p>
               </button>
+
+              {/* 🙈 ESCONDENDO CARD DE RELATÓRIO TEMPORARIAMENTE
+<button
+  onClick={() => router.push('/relatorio')}
+  className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
+>
+  <h2 className="text-sm font-semibold mb-1">Relatório de pagamento</h2>
+  <p className="text-[11px] text-slate-500">Calcule turnos do mês e gerencie feriados.</p>
+</button>
+*/}
             </div>
             <div className="bg-white border rounded-xl p-4">
                <h2 className="text-sm font-semibold mb-2">Próximos passos</h2>

@@ -36,10 +36,10 @@ const PERIODS: {
   label: string;
   maxDoctors: number;
 }[] = [
-  { key: 'manha', label: 'Manhã', maxDoctors: 6 },
-  { key: 'tarde', label: 'Tarde', maxDoctors: 6 },
-  { key: 'noite', label: 'Noite', maxDoctors: 3 },
-  { key: '24h', label: '24h', maxDoctors: 6 },
+  { key: 'manha', label: 'Manhã', maxDoctors: 8 }, // Era 6, agora 8
+  { key: 'tarde', label: 'Tarde', maxDoctors: 8 }, // Era 6, agora 8
+  { key: 'noite', label: 'Noite', maxDoctors: 4 }, // Era 3, agora 4
+  { key: '24h', label: '24h', maxDoctors: 8 },     // Era 6, agora 8
 ];
 
 function EditarPlantaoContent() {
