@@ -213,18 +213,44 @@ useEffect(() => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
-    // 1) tenta pegar hospital já selecionado (persistência)
-    const storedHospitalId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem('activeHospitalId')
-        : null;
+// 1) tenta pegar hospital já selecionado
+const storedHospitalId =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
+    : null;
 
-    // 2) precisa ter hospital selecionado (multi-hospital via activeHospitalId)
 if (!storedHospitalId) {
   setLoading(false);
   router.push('/selecionar-hospital');
   return;
 }
+
+// 2) 🔒 BLOQUEIO: só admin/coordenador do hospital pode ver dashboard
+const { data: membership, error: memErr } = await supabase
+  .from('hospital_users')
+  .select('role, is_admin')
+  .eq('user_id', user.id)
+  .eq('hospital_id', storedHospitalId)
+  .maybeSingle();
+
+if (memErr) {
+  console.error('Erro ao checar role:', memErr);
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
+
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin' ||
+  membership?.role === 'coordenador';
+
+if (!isAllowed) {
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
+
 
 // 3) carrega hospital pelo ID selecionado
 const { data: hosp, error: hospError } = await supabase
@@ -258,7 +284,7 @@ setAdminName(profile?.full_name ?? profile?.email ?? user.email ?? 'Administrado
 
 // garante persistência (mantém padrão do resto do app)
 if (typeof window !== 'undefined') {
-  window.localStorage.setItem('activeHospitalId', hosp.id);
+  window.localStorage.setItem(`activeHospitalId:${user.id}`, hosp.id);
 }
 
 await loadData(hosp.id);

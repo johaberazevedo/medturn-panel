@@ -93,10 +93,8 @@ export default function RelatorioPage() {
   const [holidaysLoading, setHolidaysLoading] = useState(false);
 
   // UI feriados
-  const [uf, setUf] = useState<string>('BA');
   const [manualName, setManualName] = useState<string>('');
   const [manualDate, setManualDate] = useState<string>(''); // yyyy-mm-dd
-  const [manualScope, setManualScope] = useState<HolidayRow['scope']>('custom');
   const [manualActive, setManualActive] = useState<boolean>(true);
 
   const startDate = useMemo(() => monthStartISO(year, month), [year, month]);
@@ -318,10 +316,6 @@ export default function RelatorioPage() {
     }
   };
 
-  const onImportState = () => {
-    alert(`Import Estadual (${uf}): vamos implementar com dedupe + toggle ativo/inativo.`);
-  };
-
   const onAddManualHoliday = async () => {
   if (!hospitalId) return;
 
@@ -360,13 +354,10 @@ export default function RelatorioPage() {
       hospital_id: hospitalId,
       holiday_date: date,
       name,
-      scope: manualScope,
+      scope: 'custom', // <--- TRAVADO EM CUSTOM
       is_active: manualActive,
+      uf: null,        // <--- SEMPRE NULO PARA MANUAL
     };
-
-    // UF só faz sentido em estadual, mas pode deixar se quiser (você disse que tudo é Bahia por enquanto)
-    if (manualScope === 'state') payload.uf = uf;
-else payload.uf = null;
 
     const { error } = await supabase
       .from('hospital_holidays')
@@ -381,7 +372,6 @@ else payload.uf = null;
     // limpa form
     setManualName('');
     setManualDate('');
-    setManualScope('custom');
     setManualActive(true);
 
     await loadHolidays();
@@ -640,7 +630,7 @@ const onDeleteHoliday = async (row: HolidayRow) => {
                 </div>
 
                 {/* Import estadual */}
-                <div className="flex items-center justify-between gap-2">
+                {/*<div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold text-slate-700">Import estadual</div>
                     <div className="text-[11px] text-slate-500">Selecione o estado e importe ({year}).</div>
@@ -669,7 +659,7 @@ const onDeleteHoliday = async (row: HolidayRow) => {
                       Importar
                     </button>
                   </div>
-                </div>
+                </div> */}
 
                 {/* Adição manual */}
                 <div className="border-t pt-3">
@@ -684,23 +674,14 @@ const onDeleteHoliday = async (row: HolidayRow) => {
                     />
 
                     <div className="flex gap-2">
-                      <input
-                        type="date"
-                        value={manualDate}
-                        onChange={(e) => setManualDate(e.target.value)}
-                        className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-300"
-                      />
-                      <select
-                        value={manualScope}
-                        onChange={(e) => setManualScope(e.target.value as any)}
-                        className="text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white"
-                      >
-                        <option value="custom">custom</option>
-<option value="city">city</option>
-<option value="state">state</option>
-<option value="national">national</option>
-                      </select>
-                    </div>
+      <input
+        type="date"
+        value={manualDate}
+        onChange={(e) => setManualDate(e.target.value)}
+        className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300" 
+      />
+      {/* Seletor removido para forçar sempre 'custom' */}
+    </div>
 
                     <label className="flex items-center gap-2 text-[11px] text-slate-600">
                       <input
@@ -712,11 +693,17 @@ const onDeleteHoliday = async (row: HolidayRow) => {
                     </label>
 
                     <button
-                      onClick={onAddManualHoliday}
-                      className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-                    >
-                      Adicionar
-                    </button>
+  onClick={onAddManualHoliday}
+  disabled={!manualName.trim() || !manualDate}
+  className={
+    "w-full text-xs px-3 py-2 rounded-lg border " +
+    (!manualName.trim() || !manualDate
+      ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+      : "border-slate-300 hover:bg-slate-50")
+  }
+>
+  Adicionar
+</button>
 
                     <div className="text-[10px] text-slate-400">
                       * Escrita será ligada depois do fluxo de import (com dedupe e validação).
