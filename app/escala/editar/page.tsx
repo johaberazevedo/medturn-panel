@@ -194,23 +194,48 @@ const [badgeOpen, setBadgeOpen] = useState<Record<string, boolean>>({});
   }
 
   useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      const hospital_id = await loadHospitalFromStorage();
-      if (!hospital_id) return;
-
-      await loadDoctors(hospital_id);
-      await loadShiftsForDay(hospital_id);
-      await loadAvailabilityForDay(hospital_id);
+  async function init() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/login');
+      return;
     }
 
-    init();
-  }, [dateParam, router]);
+    const hospital_id = await loadHospitalFromStorage();
+    if (!hospital_id) return;
+
+    // 🔒 BLOQUEIO: só admin/coordenador pode editar escala
+const { data: membership, error: memErr } = await supabase
+  .from('hospital_users')
+  .select('role, is_admin')
+  .eq('user_id', user.id)
+  .eq('hospital_id', hospital_id)
+  .maybeSingle();
+
+if (memErr) {
+  console.error('Erro ao checar role:', memErr);
+  router.replace(`/escala?date=${dateParam}`);
+  return;
+}
+
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin' ||
+  membership?.role === 'coordenador';
+
+if (!isAllowed) {
+  router.replace(`/escala?date=${dateParam}`);
+  return;
+}
+
+    // 🔓 Só chega aqui se for admin ou coordenador
+    await loadDoctors(hospital_id);
+    await loadShiftsForDay(hospital_id);
+    await loadAvailabilityForDay(hospital_id);
+  }
+
+  init();
+}, [dateParam, router]);
 
   function handleDoctorChange(
     period: 'manha' | 'tarde' | 'noite' | '24h',

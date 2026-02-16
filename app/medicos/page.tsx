@@ -190,28 +190,27 @@ export default function MedicosPage() {
   }
 
   async function handleChangeRole(doctorId: number, newRole: DoctorRow['role']) {
-    if (!hospitalId) return;
-    setError(null);
-    setActionMessage(null);
-    setSavingChangeId(doctorId);
+  if (!hospitalId) return;
 
-    try {
-      const { error: updateError } = await supabase
-        .from('hospital_users')
-        .update({ role: newRole })
-        .eq('id', doctorId);
+  setError(null);
+  setActionMessage(null);
+  setSavingChangeId(doctorId);
 
-      if (updateError) {
-        setError('Não foi possível atualizar o papel do médico.');
-        return;
-      }
+  const { error: updateError } = await supabase
+    .from('hospital_users')
+    .update({ role: newRole })
+    .eq('id', doctorId);
 
-      await reloadDoctors(hospitalId);
-      setActionMessage('Papel atualizado com sucesso.');
-    } finally {
-      setSavingChangeId(null);
-    }
+  if (updateError) {
+    setError('Não foi possível atualizar o papel do médico.');
+    setSavingChangeId(null);
+    return;
   }
+
+  await reloadDoctors(hospitalId);
+  setActionMessage('Papel atualizado com sucesso.');
+  setSavingChangeId(null);
+}
 
   async function handleRemoveDoctor(doctorId: number) {
     if (!hospitalId) return;
