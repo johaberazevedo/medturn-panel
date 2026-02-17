@@ -67,14 +67,13 @@ function startHourForPeriod(p: ShiftRow['period']) {
   return 7; // 24h começa 07:00 (ajustável)
 }
 
-// dateStr = "YYYY-MM-DD" (cria Date no fuso local do browser)
 function makeLocalDateTime(dateStr: string, hour: number, minute = 0) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1, hour, minute, 0, 0);
 }
 
 function computePresence(args: {
-  date: string;                 // shift.date (YYYY-MM-DD)
+  date: string;
   period: ShiftRow['period'];
   hasCheckin: boolean;
   now?: Date;
@@ -120,7 +119,6 @@ export default function CheckinPage() {
   const load = useCallback(async (hId: string, dayISO: string) => {
     setErrorMsg(null);
 
-    // 1) Shifts do dia
     const { data: shiftData, error: shiftErr } = await supabase
       .from('shifts')
       .select('id, date, period, doctor_user_id, is_chief, users(full_name, email)')
@@ -142,7 +140,6 @@ export default function CheckinPage() {
 
     setShifts(formattedShifts);
 
-    // 2) Checkins do dia
     const shiftIds = formattedShifts.map(s => s.id);
     if (shiftIds.length === 0) {
       setCheckins([]);
@@ -163,6 +160,39 @@ export default function CheckinPage() {
 
     setCheckins((checkinData ?? []) as CheckinRow[]);
   }, []);
+
+  // --- PATCH 1: Lógica de Gravação ---
+  async function handleManualCheckin(shiftId: number, doctorId: string) {
+  // 1. Checagem local rápida: se já estiver presente no Map, nem tenta
+  const key = `${shiftId}:${doctorId}`;
+  if (checkinMap.has(key)) {
+    alert("Este médico já possui check-in para este turno.");
+    return;
+  }
+
+  const confirmed = window.confirm("Deseja realizar o check-in manual para este médico?");
+  if (!confirmed) return;
+
+  setErrorMsg(null);
+  const { error } = await supabase
+    .from('shift_checkins')
+    .insert({
+      shift_id: shiftId,
+      doctor_user_id: doctorId,
+      source: 'web_admin',
+      method: 'manual'
+    });
+
+  if (error) {
+    // Se o erro for de duplicidade, a gente trata com carinho em vez de assustar o usuário
+    if (error.code === '23505') { 
+      alert("O check-in já foi realizado por outro meio (ou clique duplo).");
+      load(hospitalId!, date); // Recarrega para garantir que a tela esteja certa
+    } else {
+      setErrorMsg("Erro ao realizar check-in manual: " + error.message);
+    }
+  }
+}
 
   useEffect(() => {
     async function init() {
@@ -200,14 +230,7 @@ export default function CheckinPage() {
       setLoading(false);
     }
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
-
-  useEffect(() => {
-    if (!hospitalId) return;
-    setLoading(true);
-    load(hospitalId, date).finally(() => setLoading(false));
-  }, [hospitalId, date, load]);
+  }, [router, date, load]);
 
   useEffect(() => {
     if (!hospitalId) return;
@@ -339,6 +362,8 @@ export default function CheckinPage() {
                       <th className="py-2 pr-2">Status</th>
                       <th className="py-2 pr-2">Hora</th>
                       <th className="py-2 pr-2">Origem</th>
+                      {/* --- PATCH 2: Cabeçalho da Tabela --- */}
+                      <th className="py-2 pr-2 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -377,6 +402,18 @@ export default function CheckinPage() {
 
                         <td className="py-2 pr-2 text-slate-600">
                           {checkin ? `${checkin.source}/${checkin.method}` : '—'}
+                        </td>
+
+                        {/* --- PATCH 3: Botão de Ação --- */}
+                        <td className="py-2 pr-2 text-right">
+                          {state !== 'presente' && (
+                            <button
+                              onClick={() => handleManualCheckin(shift.id, shift.doctor_user_id!)}
+                              className="text-[10px] bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 transition font-medium"
+                            >
+                              Confirmar manualmente
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

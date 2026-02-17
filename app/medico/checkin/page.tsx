@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
+// Tipo atualizado para suportar múltiplos hospitais na mesma tela
 type ShiftRow = {
   id: number;
-  date: string; // YYYY-MM-DD
+  date: string;
   period: 'manha' | 'tarde' | 'noite' | '24h';
   doctor_user_id: string | null;
   is_chief: boolean;
+  hospitals: { name: string | null } | null;
 };
 
 type CheckinRow = {
@@ -43,12 +45,7 @@ function formatDateBR(dateStr: string) {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, (month ?? 1) - 1, day ?? 1);
   if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString('pt-BR', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
 function formatTimeBR(dateStr: string) {
@@ -57,57 +54,35 @@ function formatTimeBR(dateStr: string) {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-/**
- * Janela de check-in (fixa por enquanto):
- * manha: 07:00, tarde: 13:00, noite: 19:00, 24h: 07:00
- * Regra: pendente até +2h do início. Depois disso vira ausente.
- */
 function turnStartHour(period: ShiftRow['period']) {
   if (period === 'manha') return 7;
   if (period === 'tarde') return 13;
   if (period === 'noite') return 19;
-  return 7; // 24h
+  return 7;
 }
 
 function windowStatus(shift: ShiftRow, hasCheckin: boolean) {
   if (hasCheckin) return 'presente' as const;
-
-  const today = todayISO();
-  if (shift.date !== today) return 'ausente' as const;
-
   const now = new Date();
-  const start = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    turnStartHour(shift.period),
-    0,
-    0,
-    0
-  );
-
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), turnStartHour(shift.period), 0, 0);
   const deadline = new Date(start.getTime() + 2 * 60 * 60 * 1000);
 
-  if (now < start) return 'pendente' as const;     // ainda nem começou
-  if (now <= deadline) return 'pendente' as const; // dentro da janela
-  return 'ausente' as const;                       // passou 2h
+  if (now < start) return 'pendente' as const;
+  if (now <= deadline) return 'pendente' as const;
+  return 'ausente' as const;
 }
 
 export default function MedicoCheckinPage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
-  const [hospitalId, setHospitalId] = useState<string | null>(null);
-  const [hospitalName, setHospitalName] = useState<string>('Hospital');
+  const [userId, setUserId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
   const [date] = useState<string>(todayISO());
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
   const [checkins, setCheckins] = useState<CheckinRow[]>([]);
   const [busyShiftId, setBusyShiftId] = useState<number | null>(null);
 
   const checkinMap = useMemo(() => {
-    // checkins já vem order by created_at desc -> primeiro é o mais recente por shift
     const m = new Map<number, CheckinRow>();
     for (const c of checkins) {
       if (!m.has(c.shift_id)) m.set(c.shift_id, c);
@@ -115,205 +90,150 @@ export default function MedicoCheckinPage() {
     return m;
   }, [checkins]);
 
-  async function reloadCheckins(shiftIds: number[], userId: string) {
-    if (shiftIds.length === 0) {
-      setCheckins([]);
-      return;
-    }
-
-    const { data: checkinData, error: checkinErr } = await supabase
+  const reloadCheckins = useCallback(async (shiftIds: number[], uId: string) => {
+    if (shiftIds.length === 0) return;
+    const { data } = await supabase
       .from('shift_checkins')
-      .select('shift_id, doctor_user_id, created_at, source, method, is_propagated')
+      .select('*')
       .in('shift_id', shiftIds)
-      .eq('doctor_user_id', userId)
+      .eq('doctor_user_id', uId)
       .order('created_at', { ascending: false });
+    if (data) setCheckins(data as CheckinRow[]);
+  }, []);
 
-    if (checkinErr) {
-      setErrorMsg(`Erro ao recarregar check-ins: ${checkinErr.message}`);
-      return;
+  const loadAllHospitalsData = useCallback(async (uId: string) => {
+    const { data: shiftData, error: shiftErr } = await supabase
+      .from('shifts')
+      .select('id, date, period, doctor_user_id, is_chief, hospitals(name)')
+      .eq('date', date)
+      .eq('doctor_user_id', uId)
+      .order('period', { ascending: true });
+
+    if (shiftErr) {
+      setErrorMsg(`Erro: ${shiftErr.message}`);
+    } else if (shiftData) {
+      setShifts(shiftData as unknown as ShiftRow[]);
+      await reloadCheckins(shiftData.map(s => s.id), uId);
     }
-
-    setCheckins((checkinData ?? []) as CheckinRow[]);
-  }
+  }, [date, reloadCheckins]);
 
   useEffect(() => {
     async function init() {
       setLoading(true);
-      setErrorMsg(null);
-
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      const storedHospitalId =
-  typeof window !== 'undefined'
-    ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
-    : null;
-
-      if (!storedHospitalId) {
-  router.push('/selecionar-hospital?redirect=/medico/checkin');
-  return;
-}
-
-      const { data: hosp, error: hospError } = await supabase
-        .from('hospitals')
-        .select('id, name')
-        .eq('id', storedHospitalId)
-        .maybeSingle();
-
-      if (hospError || !hosp) {
-        setErrorMsg('Não foi possível identificar o hospital selecionado.');
-        setLoading(false);
-        return;
-      }
-
-      setHospitalId(hosp.id);
-      setHospitalName(hosp.name ?? 'Hospital');
-
-      // 1) shifts de hoje do médico logado
-      const { data: shiftData, error: shiftErr } = await supabase
-        .from('shifts')
-        .select('id, date, period, doctor_user_id, is_chief')
-        .eq('hospital_id', hosp.id)
-        .eq('date', date)
-        .eq('doctor_user_id', user.id)
-        .order('period', { ascending: true });
-
-      if (shiftErr) {
-        setErrorMsg(`Erro ao carregar seus turnos: ${shiftErr.message}`);
-        setShifts([]);
-        setCheckins([]);
-        setLoading(false);
-        return;
-      }
-
-      const myShifts = (shiftData ?? []) as ShiftRow[];
-      setShifts(myShifts);
-
-      await reloadCheckins(myShifts.map(s => s.id), user.id);
-
+      if (!user) { router.push('/login'); return; }
+      setUserId(user.id);
+      await loadAllHospitalsData(user.id);
       setLoading(false);
     }
-
     init();
-  }, [router, date]);
+  }, [router, loadAllHospitalsData]);
 
-  async function doCheckin(shift: ShiftRow) {
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel('universal-checkin')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'shift_checkins', filter: `doctor_user_id=eq.${userId}` }, 
+        () => loadAllHospitalsData(userId)
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, loadAllHospitalsData]);
+
+  async function doCheckin(shiftId: number) {
     try {
-      setBusyShiftId(shift.id);
+      setBusyShiftId(shiftId);
       setErrorMsg(null);
-
-      // ✅ RPC correto (confirmado no seu banco)
-      const { error: rpcErr } = await supabase.rpc('create_shift_checkin', {
-        p_shift_id: shift.id,
+      const { error } = await supabase.rpc('create_shift_checkin', {
+        p_shift_id: shiftId,
         p_source: 'web',
         p_method: 'button',
       });
-
-      if (rpcErr) {
-        setErrorMsg(`Erro ao fazer check-in: ${rpcErr.message}`);
-        return;
+      if (error) {
+        setErrorMsg(error.message);
+      } else if (userId) {
+        await loadAllHospitalsData(userId);
       }
-
-      // Recarrega check-ins (inclui o propagado se o médico tiver turno contíguo atribuído)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      await reloadCheckins(shifts.map(s => s.id), user.id);
     } finally {
       setBusyShiftId(null);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
-        Carregando check-in...
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Carregando seus plantões...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b px-6 py-4 shadow-sm flex justify-between items-center">
+      <header className="bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm">
         <div>
-          <h1 className="text-lg font-semibold text-slate-800">Check-in</h1>
-          <p className="text-xs text-slate-500">
-            {hospitalName} • {formatDateBR(date)}
-          </p>
+          <h1 className="text-lg font-bold text-slate-800">Meus Plantões Hoje</h1>
+          <p className="text-xs text-slate-500">{formatDateBR(date)} • Todos os Hospitais</p>
         </div>
-        <button
-          onClick={() => router.push('/medico')}
-          className="text-xs font-medium px-3 py-1.5 border rounded-lg hover:bg-slate-50 transition"
-        >
-          Voltar
-        </button>
+        <button onClick={() => router.push('/medico')} className="text-xs border px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">Voltar</button>
       </header>
 
-      <main className="p-6 max-w-md mx-auto space-y-3">
-        {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
-            {errorMsg}
-          </div>
-        )}
+      <main className="p-6 max-w-md mx-auto space-y-4">
+        {errorMsg && <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs border border-red-200">{errorMsg}</div>}
 
         {shifts.length === 0 ? (
-          <div className="bg-white border rounded-2xl p-4 text-xs text-slate-600">
-            Você não tem turno atribuído para hoje.
+          <div className="bg-white border rounded-2xl p-8 text-center shadow-sm">
+            <p className="text-sm text-slate-500">Nenhum turno escalado para hoje.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {shifts.map((s) => {
-              const c = checkinMap.get(s.id) ?? null;
-              const status = windowStatus(s, !!c);
+          shifts.map((s) => {
+            const c = checkinMap.get(s.id);
+            const status = windowStatus(s, !!c);
+            const hospitalName = s.hospitals?.name ?? 'Hospital';
 
-              const badge =
-                status === 'presente'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : status === 'pendente'
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-red-50 text-red-700 border-red-200';
-
-              const label =
-                status === 'presente' ? 'Presente'
-                : status === 'pendente' ? 'Pendente'
-                : 'Ausente';
-
-              const canCheckin = status === 'pendente' && !c;
-
-              return (
-                <div key={s.id} className="bg-white border rounded-2xl p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">
-                        {periodLabel(s.period)}
-                        {s.is_chief ? ' • CH' : ''}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        {c
-                          ? `Check-in: ${formatTimeBR(c.created_at)} ${c.is_propagated ? '(propagado)' : ''}`
-                          : 'Sem check-in ainda'}
-                      </p>
-                    </div>
-
-                    <span className={`px-2 py-0.5 rounded-full border text-[10px] ${badge}`}>
-                      {label}
-                    </span>
+            return (
+              <div key={s.id} className="bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                {/* Linha lateral colorida baseada no status */}
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${status === 'presente' ? 'bg-emerald-500' : status === 'pendente' ? 'bg-amber-500' : 'bg-red-500'}`} />
+                
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-emerald-600 tracking-wider">{hospitalName}</p>
+                    <h2 className="text-sm font-bold text-slate-800">Turno {periodLabel(s.period)} {s.is_chief && ' (Chefia)'}</h2>
                   </div>
-
-                  <button
-                    onClick={() => doCheckin(s)}
-                    disabled={!canCheckin || busyShiftId === s.id}
-                    className="mt-3 w-full py-2 text-xs font-medium rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    {busyShiftId === s.id ? 'Confirmando...' : 'Fazer check-in'}
-                  </button>
+                  <span className={`px-2 py-0.5 rounded-full border text-[10px] font-medium 
+                    ${status === 'presente' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 
+                      status === 'pendente' ? 'bg-amber-50 border-amber-200 text-amber-700' : 
+                      'bg-red-50 border-red-200 text-red-700'}`}>
+                    {status.toUpperCase()}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+
+                <div className="text-[11px] text-slate-500 space-y-1">
+                  {c ? (
+                    <p className="flex items-center gap-1 text-emerald-600">
+                      <span>✓ Confirmado às {formatTimeBR(c.created_at)}</span>
+                      {c.source === 'web_admin' && <span className="italic">(pelo coordenador)</span>}
+                    </p>
+                  ) : (
+                    <p>Aguardando registro de entrada...</p>
+                  )}
+                </div>
+
+                {/* NOVO BLOCO DE CONFIRMAÇÃO DE UNIDADE */}
+                {!c && status === 'pendente' && (
+                  <div className="mt-4 pt-3 border-t border-slate-50">
+                    <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Confirmação de Unidade:</p>
+                    <p className="text-[10px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2">
+                      Você está prestes a registrar presença no <strong>{hospitalName}</strong>.
+                    </p>
+                    
+                    <button
+                      onClick={() => doCheckin(s.id)}
+                      disabled={busyShiftId === s.id}
+                      className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50"
+                    >
+                      {busyShiftId === s.id ? 'REGISTRANDO...' : 'CONFIRMAR ENTRADA'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </main>
     </div>
