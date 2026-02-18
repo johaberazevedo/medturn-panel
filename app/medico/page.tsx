@@ -4,28 +4,59 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
+type NextShift = {
+  date: string;
+  period: string;
+  hospital_name: string;
+};
+
 export default function MedicoHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('Doutor(a)');
+  const [stats, setStats] = useState({ disponiveis: 0 });
+  const [nextShift, setNextShift] = useState<NextShift | null>(null);
 
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+      if (!user) { router.push('/login'); return; }
 
-      // Tenta pegar o nome do usuário
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
+      const { data: profile } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
+      if (profile?.full_name) setUserName(profile.full_name.split(' ')[0]);
 
-      if (profile?.full_name) {
-        setUserName(profile.full_name);
+      const { data: userHosp } = await supabase.from('hospital_users').select('hospital_id').eq('user_id', user.id);
+      const hospitalIds = userHosp?.map(h => h.hospital_id) || [];
+
+      if (hospitalIds.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+
+        const { data: shifts } = await supabase
+          .from('shifts')
+          .select('date, period, hospitals(name)')
+          .eq('doctor_user_id', user.id)
+          .gte('date', today)
+          .order('date', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (shifts) {
+          setNextShift({
+            date: shifts.date,
+            period: shifts.period,
+            hospital_name: (shifts.hospitals as any)?.name || 'Hospital'
+          });
+        }
+
+        const { count } = await supabase
+          .from('shift_swap_requests')
+          .select('*', { count: 'exact', head: true })
+          .in('hospital_id', hospitalIds)
+          .eq('status', 'pendente')
+          .neq('requester_user_id', user.id)
+          .or(`target_user_id.eq.${user.id},target_user_id.is.null`);
+        
+        setStats({ disponiveis: count || 0 });
       }
 
       setLoading(false);
@@ -33,94 +64,105 @@ export default function MedicoHomePage() {
     init();
   }, [router]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-slate-500">
-        Carregando...
-      </div>
-    );
+  function formatNextDate(dateStr: string) {
+    const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const date = new Date(dateStr + 'T12:00:00');
+    return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]}`;
   }
+
+  if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-400">MedTurn carregando...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b px-6 py-4 shadow-sm flex justify-between items-center">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-800">Portal do Médico</h1>
-          <p className="text-xs text-slate-500">Bem-vindo, {userName}</p>
+      <header className="bg-white px-6 pt-8 pb-6 rounded-b-[40px] shadow-sm">
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Painel do Médico</p>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Olá, {userName}!</h1>
+          </div>
+          <button 
+            onClick={() => router.push('/perfil')}
+            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border-2 border-white shadow-sm transition-transform active:scale-90"
+          >
+            👤
+          </button>
         </div>
-        <button 
-          onClick={() => router.push('/perfil')}
-          className="text-xs font-medium px-3 py-1.5 border rounded-lg hover:bg-slate-50 transition"
-        >
-          👤 Meu Perfil
-        </button>
+
+        <div className="mt-6 bg-slate-900 rounded-3xl p-5 text-white shadow-xl shadow-slate-200">
+          <p className="text-[9px] font-bold uppercase text-slate-400 mb-1">Próximo Plantão</p>
+          <div className="flex justify-between items-end">
+            {nextShift ? (
+              <div>
+                <h3 className="text-lg font-bold">{formatNextDate(nextShift.date)}</h3>
+                <p className="text-xs text-slate-300 capitalize">{nextShift.period} • {nextShift.hospital_name}</p>
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-lg font-bold text-slate-500 italic">Nenhum agendado</h3>
+                <p className="text-xs text-slate-500">Consulte sua agenda do mês</p>
+              </div>
+            )}
+            <button onClick={() => router.push('/medico/calendario')} className="text-[10px] font-black bg-emerald-500 px-3 py-1.5 rounded-xl uppercase transition-all active:scale-95">Ver Tudo</button>
+          </div>
+        </div>
       </header>
 
-      <main className="p-6 max-w-md mx-auto space-y-4">
-        <MenuCard 
-          title="Calendário" 
-          desc="Visualize a escala mensal e seus plantões marcados."
-          icon="📅"
-          onClick={() => router.push('/medico/calendario')}
-        />
+      <main className="p-6 space-y-4">
+        <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Atalhos Rápidos</h2>
 
-        {/* 🙈 ESCONDENDO CHECK-IN POR ENQUANTO
-        <MenuCard
-          title="Check-in"
-          desc="Confirme sua presença no turno de hoje."
-          icon="🟢"
-          onClick={() => router.push('/medico/checkin')}
-        />
-        */}
+        <div className="grid grid-cols-2 gap-4">
+          <QuickCard 
+            title="Minha Agenda" 
+            icon="📅" 
+            color="bg-blue-50"
+            onClick={() => router.push('/medico/calendario')}
+          />
+          <QuickCard 
+            title="Anunciar Disponibilidade" 
+            icon="✅" 
+            color="bg-emerald-50"
+            onClick={() => router.push('/medico/disponibilidade')}
+          />
+        </div>
 
-        <MenuCard 
-          title="Trocas e Disponibilidade" 
-          desc="Informe os dias que pode trabalhar e solicite trocas."
-          icon="✅"
-          onClick={() => router.push('/medico/disponibilidade')}
-        />
-
-        <MenuCard 
-          title="Solicitações e Propostas" 
-          desc="Veja solicitações recebidas e o status das suas." 
-          icon="🤝" 
+        <button 
           onClick={() => router.push('/medico/propostas')}
-        />
+          className="w-full bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all active:scale-[0.98]"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-2xl">🤝</div>
+            <div className="text-left">
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Plantões Disponíveis</h2>
+              <p className="text-xs text-slate-500">Encontre oportunidades extras</p>
+            </div>
+          </div>
+          {stats.disponiveis > 0 && (
+            <div className="bg-red-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full">
+              {stats.disponiveis} NOVOS
+            </div>
+          )}
+        </button>
 
-        <MenuCard 
-          title="Histórico" 
-          desc="Veja o registro de suas disponibilidades passadas."
-          icon="📜"
-          onClick={() => router.push('/medico/historico')}
-        />
-        
         <button 
           onClick={async () => {
             await supabase.auth.signOut();
             router.push('/login');
           }}
-          className="w-full py-3 text-xs font-medium text-red-600 border border-red-200 rounded-xl hover:bg-red-50 mt-8"
+          className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors mt-4"
         >
-          Sair da conta
+          Sair da Conta
         </button>
       </main>
     </div>
   );
 }
 
-function MenuCard({ title, desc, icon, onClick }: { title: string, desc: string, icon: string, onClick: () => void }) {
+function QuickCard({ title, icon, color, onClick }: { title: string, icon: string, color: string, onClick: () => void }) {
   return (
-    <button 
-      onClick={onClick}
-      className="w-full bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 text-left hover:shadow-md transition-all active:scale-[0.98]"
-    >
-      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-2xl">
-        {icon}
-      </div>
-      <div>
-        <h2 className="text-sm font-bold text-slate-800">{title}</h2>
-        <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
-      </div>
+    <button onClick={onClick} className={`${color} p-6 rounded-[32px] flex flex-col items-center gap-2 transition-all active:scale-95 shadow-sm`}>
+      <span className="text-3xl">{icon}</span>
+      <span className="text-[9px] font-black uppercase text-slate-700 text-center leading-tight">{title}</span>
     </button>
   );
 }
