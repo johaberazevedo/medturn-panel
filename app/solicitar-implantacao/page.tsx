@@ -2,11 +2,14 @@
 
 import React, { useMemo, useState } from "react";
 
-export default function SolicitarAcessoPage() {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
+export default function SolicitarImplantacaoPage() {
+  const [responsavel, setResponsavel] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [emailInstitucional, setEmailInstitucional] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [hospital, setHospital] = useState("");
   const [cidade, setCidade] = useState("");
+  const [qtdMedicos, setQtdMedicos] = useState("");
   const [mensagemExtra, setMensagemExtra] = useState("");
   const [copiado, setCopiado] = useState(false);
 
@@ -15,23 +18,27 @@ export default function SolicitarAcessoPage() {
 
   const payload = useMemo(() => {
     const parts = [
-      "Solicitação de acesso ao MedTurn",
+      "Solicitação de implantação do MedTurn (Admin/Hospital)",
       "",
-      `Nome: ${nome || "-"}`,
-      `E-mail: ${email || "-"}`,
+      `Responsável: ${responsavel || "-"}`,
+      `Cargo: ${cargo || "-"}`,
+      `E-mail institucional: ${emailInstitucional || "-"}`,
+      `Telefone/WhatsApp (opcional): ${telefone || "-"}`,
+      "",
       `Hospital/Instituição: ${hospital || "-"}`,
       `Cidade/UF: ${cidade || "-"}`,
+      `Nº aproximado de médicos: ${qtdMedicos || "-"}`,
       "",
       "Observações:",
       mensagemExtra?.trim() ? mensagemExtra.trim() : "-",
       "",
-      "Enviei esta solicitação pela página pública de acesso.",
+      "Enviei esta solicitação pela página pública de implantação do MedTurn.",
     ];
     return parts.join("\n");
-  }, [nome, email, hospital, cidade, mensagemExtra]);
+  }, [responsavel, cargo, emailInstitucional, telefone, hospital, cidade, qtdMedicos, mensagemExtra]);
 
   const mailtoHref = useMemo(() => {
-    const subject = encodeURIComponent("Solicitação de acesso — MedTurn");
+    const subject = encodeURIComponent("Solicitação de implantação — MedTurn");
     const body = encodeURIComponent(payload);
     return `mailto:${supportEmail}?subject=${subject}&body=${body}`;
   }, [payload, supportEmail]);
@@ -40,7 +47,6 @@ export default function SolicitarAcessoPage() {
     try {
       await navigator.clipboard.writeText(payload);
     } catch {
-      // fallback simples
       const ta = document.createElement("textarea");
       ta.value = payload;
       document.body.appendChild(ta);
@@ -52,39 +58,66 @@ export default function SolicitarAcessoPage() {
     setTimeout(() => setCopiado(false), 1200);
   }
 
-  const podeEnviar = nome.trim() && email.trim() && hospital.trim();
+  const podeEnviar =
+    responsavel.trim() &&
+    cargo.trim() &&
+    emailInstitucional.trim() &&
+    hospital.trim() &&
+    cidade.trim();
 
   return (
     <main style={styles.page}>
       <div style={styles.card}>
         <header style={{ marginBottom: 16 }}>
           <div style={styles.badge}>MedTurn</div>
-          <h1 style={styles.title}>Solicitar acesso</h1>
+          <h1 style={styles.title}>Solicitar implantação</h1>
           <p style={styles.subtitle}>
-            O MedTurn é uma plataforma SaaS para hospitais. Se sua instituição ainda não utiliza, você pode solicitar acesso ou solicitar implantação.
+            O MedTurn é uma plataforma SaaS para gestão de escalas médicas.
+            Qualquer hospital ou instituição de saúde pode solicitar implantação.
             Preencha abaixo para gerar sua solicitação.
           </p>
         </header>
 
         <section style={styles.form}>
-          <Field label="Nome completo" required>
+          <Field label="Nome do responsável" required>
             <input
               style={styles.input}
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex: Dr. João Silva"
+              value={responsavel}
+              onChange={(e) => setResponsavel(e.target.value)}
+              placeholder="Ex: Maria Souza"
               autoComplete="name"
             />
           </Field>
 
-          <Field label="E-mail" required>
+          <Field label="Cargo" required>
             <input
               style={styles.input}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="exemplo@email.com"
+              value={cargo}
+              onChange={(e) => setCargo(e.target.value)}
+              placeholder="Ex: Coordenação de Escalas / Direção"
+              autoComplete="organization-title"
+            />
+          </Field>
+
+          <Field label="E-mail institucional" required>
+            <input
+              style={styles.input}
+              value={emailInstitucional}
+              onChange={(e) => setEmailInstitucional(e.target.value)}
+              placeholder="ex: coordenacao@hospital.com.br"
               autoComplete="email"
               inputMode="email"
+            />
+          </Field>
+
+          <Field label="Telefone/WhatsApp (opcional)">
+            <input
+              style={styles.input}
+              value={telefone}
+              onChange={(e) => setTelefone(e.target.value)}
+              placeholder="Ex: (71) 9XXXX-XXXX"
+              inputMode="tel"
+              autoComplete="tel"
             />
           </Field>
 
@@ -94,10 +127,11 @@ export default function SolicitarAcessoPage() {
               value={hospital}
               onChange={(e) => setHospital(e.target.value)}
               placeholder="Ex: Hospital Geral"
+              autoComplete="organization"
             />
           </Field>
 
-          <Field label="Cidade/UF">
+          <Field label="Cidade/UF" required>
             <input
               style={styles.input}
               value={cidade}
@@ -106,12 +140,22 @@ export default function SolicitarAcessoPage() {
             />
           </Field>
 
+          <Field label="Nº aproximado de médicos">
+            <input
+              style={styles.input}
+              value={qtdMedicos}
+              onChange={(e) => setQtdMedicos(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Ex: 35"
+              inputMode="numeric"
+            />
+          </Field>
+
           <Field label="Observações (opcional)">
             <textarea
               style={{ ...styles.input, minHeight: 90, resize: "vertical" as const }}
               value={mensagemExtra}
               onChange={(e) => setMensagemExtra(e.target.value)}
-              placeholder="Ex: Sou plantonista fixo na escala noturna. Posso receber acesso para visualizar e propor trocas."
+              placeholder="Ex: Queremos iniciar pelo mês X, com regras de feriado e relatórios de pagamento."
             />
           </Field>
 
@@ -130,11 +174,7 @@ export default function SolicitarAcessoPage() {
               Enviar solicitação por e-mail
             </a>
 
-            <button
-              type="button"
-              onClick={copiarMensagem}
-              style={styles.secondaryBtn}
-            >
+            <button type="button" onClick={copiarMensagem} style={styles.secondaryBtn}>
               Copiar mensagem
             </button>
           </div>
@@ -144,7 +184,7 @@ export default function SolicitarAcessoPage() {
               <span style={styles.ok}>Mensagem copiada ✅</span>
             ) : (
               <span style={styles.helper}>
-                Dica: se você não usa e-mail no celular, copie a mensagem e envie ao seu coordenador (WhatsApp, etc.).
+                Dica: se preferir, copie a mensagem e envie por WhatsApp para seu time administrativo.
               </span>
             )}
           </div>
@@ -152,7 +192,7 @@ export default function SolicitarAcessoPage() {
           <hr style={styles.hr} />
 
           <p style={styles.footer}>
-            Após o envio, o coordenador/administrador cria suas credenciais e você poderá entrar no app.
+            Após o envio, nossa equipe entra em contato para alinhar implantação, cadastro do hospital e criação dos primeiros administradores.
           </p>
         </section>
       </div>
