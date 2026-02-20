@@ -3,432 +3,185 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { 
+  Settings, MapPin, Power, Save, ChevronLeft, Loader2, Globe,
+  Activity, Clock, CheckCircle2, AlertCircle, RefreshCw, UserX
+} from 'lucide-react';
+
+// --- CONFIG ---
+const INICIO_TURNO = { manha: 7, tarde: 13, noite: 19, '24h': 7 };
+const JANELA_TOLERANCIA_MS = 2 * 60 * 60 * 1000;
 
 type ShiftRow = {
-  id: number;
-  date: string;
-  period: 'manha' | 'tarde' | 'noite' | '24h';
-  doctor_user_id: string | null;
-  is_chief: boolean;
+  id: number; date: string; period: 'manha' | 'tarde' | 'noite' | '24h';
+  doctor_user_id: string | null; is_chief: boolean;
   users: { full_name: string | null; email?: string | null } | null;
 };
 
-type CheckinRow = {
-  shift_id: number;
-  doctor_user_id: string;
-  created_at: string;
-  source: string;
-  method: string;
-  is_propagated: boolean;
-};
-
-function todayISO(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function formatDateBR(dateStr: string) {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const d = new Date(year, (month ?? 1) - 1, day ?? 1);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function formatTimeBR(dateStr: string) {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function periodLabel(p: ShiftRow['period']) {
-  switch (p) {
-    case 'manha': return 'Manhã';
-    case 'tarde': return 'Tarde';
-    case 'noite': return 'Noite';
-    case '24h': return '24h';
-  }
-}
-
 const PERIOD_ORDER: ShiftRow['period'][] = ['manha', 'tarde', 'noite', '24h'];
 
-// =======================
-// ✅ STATUS: Presente / Pendente / Ausente (janela de 2h)
-// =======================
-type PresenceState = 'presente' | 'pendente' | 'ausente';
-
-function startHourForPeriod(p: ShiftRow['period']) {
-  if (p === 'manha') return 7;
-  if (p === 'tarde') return 13;
-  if (p === 'noite') return 19;
-  return 7; // 24h começa 07:00 (ajustável)
-}
-
-function makeLocalDateTime(dateStr: string, hour: number, minute = 0) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1, hour, minute, 0, 0);
-}
-
-function computePresence(args: {
-  date: string;
-  period: ShiftRow['period'];
-  hasCheckin: boolean;
-  now?: Date;
-}): { state: PresenceState; startAt: Date; deadline: Date } {
-  const now = args.now ?? new Date();
-
-  const startAt = makeLocalDateTime(args.date, startHourForPeriod(args.period));
-  const deadline = new Date(startAt.getTime() + 2 * 60 * 60 * 1000);
-
-  if (args.hasCheckin) return { state: 'presente', startAt, deadline };
-  if (now <= deadline) return { state: 'pendente', startAt, deadline };
-  return { state: 'ausente', startAt, deadline };
-}
-
-function badgeForState(state: PresenceState) {
-  if (state === 'presente') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (state === 'pendente') return 'bg-amber-50 text-amber-700 border-amber-200';
-  return 'bg-red-50 text-red-700 border-red-200';
-}
-
-function labelForState(state: PresenceState) {
-  if (state === 'presente') return 'Presente';
-  if (state === 'pendente') return 'Pendente';
-  return 'Ausente';
-}
-
-function formatHHMM(d: Date) {
-  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-export default function CheckinPage() {
+export default function CheckinAdminPage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
-  const [hospitalName, setHospitalName] = useState<string>('Hospital');
-  const [date, setDate] = useState<string>(todayISO());
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  const [hospConfig, setHospConfig] = useState({ name: '', is_enabled: true, lat: '', lng: '', radius: '200' });
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
-  const [checkins, setCheckins] = useState<CheckinRow[]>([]);
+  const [checkins, setCheckins] = useState<any[]>([]);
+  const [salvando, setSalvando] = useState(false);
 
-  const load = useCallback(async (hId: string, dayISO: string) => {
-    setErrorMsg(null);
-
-    const { data: shiftData, error: shiftErr } = await supabase
-      .from('shifts')
-      .select('id, date, period, doctor_user_id, is_chief, users(full_name, email)')
-      .eq('hospital_id', hId)
-      .eq('date', dayISO)
-      .order('period', { ascending: true });
-
-    if (shiftErr) {
-      setErrorMsg(`Erro ao carregar shifts: ${shiftErr.message}`);
-      setShifts([]);
-      setCheckins([]);
-      return;
-    }
-
-    const formattedShifts = (shiftData ?? []).map((s: any) => ({
-      ...s,
-      users: Array.isArray(s.users) ? s.users[0] : s.users,
-    })) as ShiftRow[];
-
-    setShifts(formattedShifts);
-
-    const shiftIds = formattedShifts.map(s => s.id);
-    if (shiftIds.length === 0) {
-      setCheckins([]);
-      return;
-    }
-
-    const { data: checkinData, error: checkinErr } = await supabase
-      .from('shift_checkins')
-      .select('shift_id, doctor_user_id, created_at, source, method, is_propagated')
-      .in('shift_id', shiftIds)
-      .order('created_at', { ascending: false });
-
-    if (checkinErr) {
-      setErrorMsg(`Erro ao carregar check-ins: ${checkinErr.message}`);
-      setCheckins([]);
-      return;
-    }
-
-    setCheckins((checkinData ?? []) as CheckinRow[]);
-  }, []);
-
-  // --- PATCH 1: Lógica de Gravação ---
-  async function handleManualCheckin(shiftId: number, doctorId: string) {
-  // 1. Checagem local rápida: se já estiver presente no Map, nem tenta
-  const key = `${shiftId}:${doctorId}`;
-  if (checkinMap.has(key)) {
-    alert("Este médico já possui check-in para este turno.");
-    return;
-  }
-
-  const confirmed = window.confirm("Deseja realizar o check-in manual para este médico?");
-  if (!confirmed) return;
-
-  setErrorMsg(null);
-  const { error } = await supabase
-    .from('shift_checkins')
-    .insert({
-      shift_id: shiftId,
-      doctor_user_id: doctorId,
-      source: 'web_admin',
-      method: 'manual'
+  const carregarDados = useCallback(async (hId: string, d: string) => {
+    setFetching(true);
+    const { data: hosp } = await supabase.from('hospitals').select('*').eq('id', hId).single();
+    if (hosp) setHospConfig({ 
+      name: hosp.name, is_enabled: hosp.is_checkin_enabled, 
+      lat: hosp.latitude?.toString() || '', lng: hosp.longitude?.toString() || '', 
+      radius: hosp.geofence_radius?.toString() || '200' 
     });
 
-  if (error) {
-    // Se o erro for de duplicidade, a gente trata com carinho em vez de assustar o usuário
-    if (error.code === '23505') { 
-      alert("O check-in já foi realizado por outro meio (ou clique duplo).");
-      load(hospitalId!, date); // Recarrega para garantir que a tela esteja certa
-    } else {
-      setErrorMsg("Erro ao realizar check-in manual: " + error.message);
-    }
-  }
-}
+    const { data: sData } = await supabase.from('shifts').select('*, users(full_name, email)').eq('hospital_id', hId).eq('date', d).order('period');
+    const sIds = sData?.map(x => x.id) || [];
+    const { data: cData } = await supabase.from('shift_checkins').select('*').in('shift_id', sIds);
+    
+    setShifts(sData?.map(s => ({ ...s, users: Array.isArray(s.users) ? s.users[0] : s.users })) || []);
+    setCheckins(cData || []);
+    setFetching(false);
+  }, []);
 
   useEffect(() => {
     async function init() {
-      setLoading(true);
-
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
-
-      const storedHospitalId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem('activeHospitalId')
-          : null;
-
-      if (!storedHospitalId) {
-        router.push('/selecionar-hospital');
-        return;
-      }
-
-      const { data: hosp, error: hospError } = await supabase
-        .from('hospitals')
-        .select('id, name')
-        .eq('id', storedHospitalId)
-        .maybeSingle();
-
-      if (hospError || !hosp) {
-        setErrorMsg('Não foi possível identificar o hospital selecionado.');
-        setLoading(false);
-        return;
-      }
-
-      setHospitalId(hosp.id);
-      setHospitalName(hosp.name ?? 'Hospital');
-
-      await load(hosp.id, date);
+      if (!user) return router.push('/login');
+      const hId = localStorage.getItem(`activeHospitalId:${user.id}`);
+      if (!hId) return router.push('/selecionar-hospital');
+      setHospitalId(hId);
+      await carregarDados(hId, date);
       setLoading(false);
     }
     init();
-  }, [router, date, load]);
-
-  useEffect(() => {
-    if (!hospitalId) return;
-
-    const channel = supabase
-      .channel('checkin-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_checkins' }, () => {
-        load(hospitalId, date);
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [hospitalId, date, load]);
-
-  const checkinMap = useMemo(() => {
-    const m = new Map<string, CheckinRow>();
-    for (const c of checkins) {
-      const key = `${c.shift_id}:${c.doctor_user_id}`;
-      if (!m.has(key)) m.set(key, c);
-    }
-    return m;
-  }, [checkins]);
+  }, [router, date, carregarDados]);
 
   const grouped = useMemo(() => {
-    const rows = shifts
-      .filter(s => !!s.doctor_user_id)
-      .map(s => {
-        const key = `${s.id}:${s.doctor_user_id}`;
-        const c = checkinMap.get(key) ?? null;
+    const byPeriod: Record<string, any[]> = { manha: [], tarde: [], noite: [], '24h': [] };
+    shifts.filter(s => !!s.doctor_user_id).forEach(s => {
+      const ck = checkins.find(c => c.shift_id === s.id);
+      const now = new Date();
+      const [y, m, d] = s.date.split('-').map(Number);
+      const startAt = new Date(y, m - 1, d, INICIO_TURNO[s.period], 0, 0);
+      const deadline = new Date(startAt.getTime() + JANELA_TOLERANCIA_MS);
+      const state = ck ? 'presente' : (now > deadline ? 'ausente' : 'pendente');
+      byPeriod[s.period].push({ ...s, checkin: ck, state, deadline: deadline.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) });
+    });
+    return byPeriod;
+  }, [shifts, checkins]);
 
-        const presence = computePresence({
-          date: s.date,
-          period: s.period,
-          hasCheckin: !!c,
-        });
+  const salvarConfig = async () => {
+    setSalvando(true);
+    await supabase.from('hospitals').update({
+      is_checkin_enabled: hospConfig.is_enabled,
+      latitude: parseFloat(hospConfig.lat), longitude: parseFloat(hospConfig.lng),
+      geofence_radius: parseInt(hospConfig.radius)
+    }).eq('id', hospitalId);
+    setSalvando(false);
+    alert("Configurações aplicadas!");
+  };
 
-        return {
-          shift: s,
-          checkin: c,
-          state: presence.state,
-          deadline: presence.deadline,
-          doctorName: s.users?.full_name ?? s.users?.email ?? 'Sem nome',
-        };
-      });
-
-    const byPeriod: Record<string, typeof rows> = { manha: [], tarde: [], noite: [], '24h': [] };
-    rows.forEach(r => byPeriod[r.shift.period].push(r));
-
-    for (const p of Object.keys(byPeriod)) {
-      byPeriod[p].sort((a, b) => {
-        if (a.shift.is_chief && !b.shift.is_chief) return -1;
-        if (!a.shift.is_chief && b.shift.is_chief) return 1;
-        return a.doctorName.localeCompare(b.doctorName, 'pt-BR', { sensitivity: 'base' });
-      });
-    }
-
-    return byPeriod as Record<ShiftRow['period'], typeof rows>;
-  }, [shifts, checkinMap]);
-
-  function summary(period: ShiftRow['period']) {
-    const list = grouped[period] ?? [];
-    const total = list.length;
-    const present = list.filter(x => x.state === 'presente').length;
-    return { total, present };
-  }
-
-  if (loading && !hospitalId) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-sm text-slate-600">Carregando...</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black uppercase tracking-widest animate-pulse text-xs">Sincronizando Unidade...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] uppercase text-slate-500">Check-in • {hospitalName}</p>
-            <h1 className="text-xl font-semibold">Presença por turno</h1>
-            <p className="text-[11px] text-slate-500">Data: {formatDateBR(date)}</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="text-xs border rounded-lg px-2 py-1.5 bg-white"
-            />
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Voltar
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-50 font-sans">
+      <header className="bg-white border-b px-6 py-4 sticky top-0 z-50 flex justify-between items-center shadow-sm backdrop-blur-md bg-white/80">
+        <div className="flex items-center gap-4">
+          <button onClick={() => router.push('/dashboard')} className="p-2 hover:bg-slate-100 rounded-xl transition text-slate-400"><ChevronLeft size={20} /></button>
+          <section>
+            <h1 className="text-lg font-black uppercase tracking-tight text-slate-800">Operações de Presença</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hospConfig.name}</p>
+          </section>
+        </div>
+        <div className="flex items-center gap-3">
+          {fetching && <RefreshCw size={14} className="animate-spin text-blue-500" />}
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="text-xs font-bold border rounded-xl px-4 py-2 bg-slate-50 outline-none focus:ring-2 ring-blue-500 transition-all" />
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
-            {errorMsg}
-          </div>
-        )}
-
-        {PERIOD_ORDER.map((p) => {
-          const { total, present } = summary(p);
-          const list = grouped[p] ?? [];
-
-          if (total === 0) return null;
-
-          return (
-            <section key={p} className="bg-white border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold">{periodLabel(p)}</h2>
-                <span className="text-[11px] text-slate-600">
-                  Presentes: <strong>{present}/{total}</strong>
-                </span>
+      <main className="max-w-7xl mx-auto p-6 space-y-8">
+        {/* HUD DE CONFIGURAÇÕES */}
+        <section className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group transition-all">
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-4 border-r border-white/10 pr-8">
+              <div className="flex items-center gap-3 mb-4"><Settings size={18} className="text-blue-400" /><h2 className="text-sm font-black uppercase tracking-widest">Painel de GPS</h2></div>
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
+                <p className="text-[10px] font-black text-slate-500 uppercase">Botão no App</p>
+                <button onClick={() => setHospConfig(p => ({ ...p, is_enabled: !p.is_enabled }))} className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all ${hospConfig.is_enabled ? 'bg-emerald-500' : 'bg-slate-700'}`}>
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-all ${hospConfig.is_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
               </div>
+            </div>
+            <div className="lg:col-span-6 grid grid-cols-2 md:grid-cols-3 gap-6">
+              {[ { l: 'Latitude', k: 'lat' }, { l: 'Longitude', k: 'lng' }, { l: 'Raio (m)', k: 'radius' } ].map(f => (
+                <div key={f.k}>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 block">{f.l}</label>
+                  <input type="text" value={(hospConfig as any)[f.k]} onChange={e => setHospConfig(p => ({ ...p, [f.k]: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition" />
+                </div>
+              ))}
+            </div>
+            <div className="lg:col-span-2">
+              <button onClick={salvarConfig} disabled={salvando} className="w-full h-full min-h-[100px] bg-blue-600 hover:bg-blue-500 rounded-[1.5rem] flex flex-col items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
+                {salvando ? <Loader2 className="animate-spin" /> : <Save size={24} />}
+                <span className="text-[10px] font-black uppercase">Aplicar</span>
+              </button>
+            </div>
+          </div>
+          <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none group-hover:opacity-10 transition-opacity"><Globe size={180} /></div>
+        </section>
 
-              <div className="overflow-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-slate-500">
-                    <tr className="text-left">
-                      <th className="py-2 pr-2">Médico</th>
-                      <th className="py-2 pr-2">Status</th>
-                      <th className="py-2 pr-2">Hora</th>
-                      <th className="py-2 pr-2">Origem</th>
-                      {/* --- PATCH 2: Cabeçalho da Tabela --- */}
-                      <th className="py-2 pr-2 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.map(({ shift, checkin, state, deadline, doctorName }) => (
-                      <tr key={`${shift.id}-${shift.doctor_user_id}`} className="border-t">
-                        <td className="py-2 pr-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-slate-800">{doctorName}</span>
-                            {shift.is_chief && (
-                              <span className="text-[10px] font-bold bg-slate-800 text-white px-1.5 py-0.5 rounded">
-                                CH
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-2 pr-2">
-                          <span className={`px-2 py-0.5 rounded-full border text-[10px] ${badgeForState(state)}`}>
-                            {labelForState(state)}
-                            {state === 'pendente' ? (
-                              <span className="ml-1 text-[10px] opacity-70">
-                                (até {formatHHMM(deadline)})
-                              </span>
-                            ) : null}
-                            {state === 'presente' && checkin?.is_propagated ? (
-                              <span className="ml-1 text-[10px] opacity-70">
-                                (propagado)
-                              </span>
-                            ) : null}
-                          </span>
-                        </td>
-
-                        <td className="py-2 pr-2 text-slate-700">
-                          {checkin ? formatTimeBR(checkin.created_at) : '—'}
-                        </td>
-
-                        <td className="py-2 pr-2 text-slate-600">
-                          {checkin ? `${checkin.source}/${checkin.method}` : '—'}
-                        </td>
-
-                        {/* --- PATCH 3: Botão de Ação --- */}
-                        <td className="py-2 pr-2 text-right">
-                          {state !== 'presente' && (
-                            <button
-                              onClick={() => handleManualCheckin(shift.id, shift.doctor_user_id!)}
-                              className="text-[10px] bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 transition font-medium"
-                            >
-                              Confirmar manualmente
-                            </button>
-                          )}
-                        </td>
+        {/* LISTAGEM AGRUPADA POR TURNOS */}
+        <div className="space-y-6">
+          {PERIOD_ORDER.map(p => {
+            const list = grouped[p];
+            if (list.length === 0) return null;
+            return (
+              <section key={p} className="bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm">
+                <div className="bg-slate-50/80 px-6 py-4 border-b flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-2"><Clock size={16} className="text-slate-400" /> {p}</h3>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Janela: {INICIO_TURNO[p]}:00h - {INICIO_TURNO[p]+2}:00h</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/30 font-black text-slate-400 uppercase tracking-widest">
+                        <th className="px-6 py-3">Médico</th><th className="px-6 py-3">Status</th><th className="px-6 py-3">Registro</th><th className="px-6 py-3 text-right">Ações</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          );
-        })}
-
-        {!loading && shifts.filter(s => !!s.doctor_user_id).length === 0 && (
-          <div className="bg-white border rounded-xl p-4 text-xs text-slate-500">
-            Nenhum plantão atribuído para esta data.
-          </div>
-        )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {list.map(s => (
+                        <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-black text-slate-800">{s.users?.full_name || 'Sem nome'} {s.is_chief && <span className="ml-2 bg-slate-900 text-[9px] text-white px-1 py-0.5 rounded">CH</span>}</td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 font-black uppercase px-2 py-1 rounded-lg border ${
+                              s.state === 'presente' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
+                              s.state === 'ausente' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-amber-50 border-amber-200 text-amber-500'
+                            }`}>
+                              {s.state === 'presente' ? <CheckCircle2 size={12} /> : s.state === 'ausente' ? <UserX size={12} /> : <Clock size={12} />} {s.state}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {s.checkin ? <div className="text-[10px]"><p className="font-black text-slate-700">{new Date(s.checkin.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p><p className="text-[9px] text-slate-400 uppercase tracking-tighter">{s.checkin.method}</p></div> : '--:--'}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {s.state !== 'presente' && <button onClick={async () => { if(window.confirm("Confirmar presença manual?")){ await supabase.from('shift_checkins').insert({ shift_id: s.id, doctor_user_id: s.doctor_user_id, source: 'web_admin', method: 'manual' }); carregarDados(hospitalId!, date); } }} className="text-[10px] font-black bg-slate-900 text-white px-4 py-2 rounded-xl active:scale-95 transition-all">Confirmar Manual</button>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </main>
     </div>
   );

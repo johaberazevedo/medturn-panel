@@ -16,6 +16,7 @@ export default function MedicoHomePage() {
   const [userName, setUserName] = useState('Doutor(a)');
   const [stats, setStats] = useState({ disponiveis: 0 });
   const [nextShift, setNextShift] = useState<NextShift | null>(null);
+  const [canCheckin, setCanCheckin] = useState(false); // ✅ Novo estado para o botão
 
   useEffect(() => {
     async function init() {
@@ -31,6 +32,7 @@ export default function MedicoHomePage() {
       if (hospitalIds.length > 0) {
         const today = new Date().toISOString().split('T')[0];
 
+        // 1. Busca o próximo plantão para o card do header
         const { data: shifts } = await supabase
           .from('shifts')
           .select('date, period, hospitals(name)')
@@ -48,6 +50,17 @@ export default function MedicoHomePage() {
           });
         }
 
+        // 2. ✅ LÓGICA DO BOTÃO: Verifica se tem plantão HOJE com check-in LIGADO
+        const { data: todayShifts } = await supabase
+          .from('shifts')
+          .select('id, hospitals(is_checkin_enabled)')
+          .eq('doctor_user_id', user.id)
+          .eq('date', today);
+
+        const hasEnabledCheckin = todayShifts?.some(s => (s.hospitals as any)?.is_checkin_enabled === true);
+        setCanCheckin(!!hasEnabledCheckin);
+
+        // 3. Busca solicitações de troca
         const { count } = await supabase
           .from('shift_swap_requests')
           .select('*', { count: 'exact', head: true })
@@ -109,6 +122,23 @@ export default function MedicoHomePage() {
       </header>
 
       <main className="p-6 space-y-4">
+        
+        {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
+        {canCheckin && (
+          <button 
+            onClick={() => router.push('/medico/checkin')}
+            className="w-full bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl">📍</div>
+              <div className="text-left">
+                <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Confirmar Presença</h2>
+                <p className="text-xs text-slate-500">Check-in disponível para hoje</p>
+              </div>
+            </div>
+          </button>
+        )}
+
         <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Atalhos Rápidos</h2>
 
         <div className="grid grid-cols-2 gap-4">
