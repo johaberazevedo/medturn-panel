@@ -208,17 +208,26 @@ function PropostasContent() {
             </div>
 
             <div className="flex gap-2">
-              {activeTab === 'recebidas' ? (
-                <>
-                  <button disabled={!!processingId} onClick={() => handleAction(req.id, 'rejeitado')} className="flex-1 border-2 border-slate-50 text-slate-300 py-3 rounded-2xl text-[10px] font-black uppercase transition-colors hover:bg-slate-50">Ignorar</button>
-                  <button disabled={!!processingId} onClick={() => handleAction(req.id, 'approved', req)} className="flex-1 bg-slate-900 text-white py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-slate-200 transition-transform active:scale-95">Pegar Plantão</button>
-                </>
-              ) : (
-                req.status === 'pendente' && (
-                  <button disabled={!!processingId} onClick={() => handleAction(req.id, 'cancelado')} className="w-full border-2 border-red-50 text-red-400 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors">Remover anúncio</button>
-                )
-              )}
-            </div>
+  {activeTab === 'recebidas' ? (
+    <button 
+      disabled={!!processingId} 
+      onClick={() => handleAction(req.id, 'approved', req)} 
+      className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-slate-200 transition-all active:scale-[0.98] disabled:opacity-50"
+    >
+      {processingId === req.id ? 'Processando...' : 'Pegar Plantão'}
+    </button>
+  ) : (
+    req.status === 'pendente' && (
+      <button 
+        disabled={!!processingId} 
+        onClick={() => handleAction(req.id, 'cancelado')} 
+        className="w-full border-2 border-red-50 text-red-400 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors"
+      >
+        Remover anúncio
+      </button>
+    )
+  )}
+</div>
           </div>
         ))}
         {(activeTab === 'recebidas' ? received : sent).length === 0 && (
