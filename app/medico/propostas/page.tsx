@@ -8,34 +8,43 @@ import { toast, Toaster } from 'sonner';
 type SwapRequest = {
   id: number;
   from_shift_id: number;
-  status: 'pendente' | 'approved' | 'rejeitado' | 'cancelado';
+  status: 'pendente' | 'aprovado' | 'rejeitado' | 'cancelado';
   reason: string | null;
   created_at: string;
   target_user_id: string | null;
   hospital_id: string;
+
   requester: { full_name: string | null } | null;
   target: { full_name: string | null } | null;
+
   shift: {
     date: string;
     period: 'manha' | 'tarde' | 'noite' | '24h';
   } | null;
-  hospitals?: { name: string | null } | null;
+
+  hospitals: { name: string | null } | null;
 };
 
-function statusBadge(status: string) {
-  const styles: Record<string, string> = {
-    approved: 'bg-emerald-100 text-emerald-700',
+function statusBadge(status: SwapRequest['status']) {
+  const styles: Record<SwapRequest['status'], string> = {
+    aprovado: 'bg-emerald-100 text-emerald-700',
     rejeitado: 'bg-red-100 text-red-700',
     cancelado: 'bg-slate-100 text-slate-500',
-    pendente: 'bg-amber-100 text-amber-700'
+    pendente: 'bg-amber-100 text-amber-700',
   };
-  const labels: Record<string, string> = {
-    approved: 'Aprovado',
+
+  const labels: Record<SwapRequest['status'], string> = {
+    aprovado: 'Aprovado',
     rejeitado: 'Recusado',
     cancelado: 'Cancelado',
-    pendente: 'Pendente'
+    pendente: 'Pendente',
   };
-  return <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${styles[status] || styles.pendente}`}>{labels[status] || 'Pendente'}</span>;
+
+  return (
+    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${styles[status]}`}>
+      {labels[status]}
+    </span>
+  );
 }
 
 function formatDate(dateStr: string) {
@@ -48,7 +57,6 @@ function PropostasContent() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'recebidas' | 'enviadas'>('recebidas');
   const [userId, setUserId] = useState<string | null>(null);
-  const [hospitalId, setHospitalId] = useState<string | null>(null);
   
   const [received, setReceived] = useState<SwapRequest[]>([]);
   const [sent, setSent] = useState<SwapRequest[]>([]);
@@ -109,61 +117,77 @@ function PropostasContent() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
+    useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
       setUserId(user.id);
-
-      const storedHosp = window.localStorage.getItem(`activeHospitalId:${user.id}`);
-      setHospitalId(storedHosp); // Mantemos para contexto, mas fetchData agora é global por médico
       
       fetchData(user.id);
     }
     init();
   }, [router, fetchData]);
 
-  async function executeAction(id: number, action: 'approved' | 'rejeitado' | 'cancelado', shiftId?: number) {
-    setProcessingId(id);
-    try {
-      const { error: updateError } = await supabase.from('shift_swap_requests').update({ 
-        status: action,
-        target_user_id: action === 'approved' ? userId : undefined 
-      }).eq('id', id);
-      
-      if (updateError) throw updateError;
+  // ✅ Helpers de estado (igual ao app)
+  const isMinePending = (req: SwapRequest) =>
+    req.status === 'pendente' && !!userId && req.target_user_id === userId;
 
-      if (action === 'approved' && shiftId && userId) {
-        const { error: shiftError } = await supabase.from('shifts').update({ doctor_user_id: userId }).eq('id', shiftId);
-        if (shiftError) throw shiftError;
-      }
+  const isOpen = (req: SwapRequest) =>
+    req.status === 'pendente' && req.target_user_id === null;
 
-      toast.success(action === 'approved' ? "Plantão assumido!" : "Status atualizado.");
-      if (userId) fetchData(userId);
-    } catch (err) {
-      toast.error("Erro ao processar ação.");
-    } finally {
-      setProcessingId(null);
-    }
-  }
+  async function executeAction(
+  id: number,
+  action: 'pegar' | 'rejeitado' | 'cancelado',
+  shiftId?: number
+) {
+  setProcessingId(id);
+  try {
+    if (!userId) throw new Error('Sem usuário logado');
 
-  const handleAction = (id: number, action: 'approved' | 'rejeitado' | 'cancelado', req?: SwapRequest) => {
-    if (action === 'approved') {
-      toast("Assumir este plantão?", {
-        description: `Confirmar entrada no dia ${formatDate(req?.shift?.date ?? '')} no ${req?.hospitals?.name}?`,
-        action: { 
-          label: "Confirmar", 
-          onClick: () => executeAction(id, 'approved', req?.from_shift_id) 
-        },
-        cancel: { 
-          label: "Voltar",
-          onClick: () => {} // Correção para o Build
-        }
-      });
+    if (action === 'pegar') {
+      // médico pega: mantém pendente e seta target_user_id
+      const { error } = await supabase
+        .from('shift_swap_requests')
+        .update({ target_user_id: userId, status: 'pendente' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Pedido enviado! Aguardando confirmação da coordenação.');
     } else {
-      executeAction(id, action);
+      // rejeitar/cancelar: só muda status (valores do banco)
+      const { error } = await supabase
+        .from('shift_swap_requests')
+        .update({ status: action })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Status atualizado.');
     }
-  };
+
+    await fetchData(userId);
+  } catch (err: any) {
+    toast.error(err?.message ?? 'Erro ao processar ação.');
+  } finally {
+    setProcessingId(null);
+  }
+}
+
+const handleAction = (req: SwapRequest, action: 'pegar' | 'rejeitado' | 'cancelado') => {
+  if (action === 'pegar') {
+    toast('Assumir este plantão?', {
+      description: `Confirmar entrada no dia ${formatDate(req.shift?.date ?? '')} no ${req.hospitals?.name ?? 'hospital'}?`,
+      action: {
+        label: 'Confirmar',
+        onClick: () => executeAction(req.id, 'pegar', req.from_shift_id),
+      },
+      cancel: { label: 'Voltar', onClick: () => {} },
+    });
+  } else {
+    executeAction(req.id, action);
+  }
+};
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm font-medium">Sincronizando Marketplace...</div>;
 
@@ -201,26 +225,48 @@ function PropostasContent() {
               {statusBadge(req.status)}
             </div>
             
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
+                        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
               <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Horário Disponível</p>
               <p className="text-sm font-bold text-slate-700">📅 {formatDate(req.shift?.date ?? '')} • <span className="capitalize">{req.shift?.period}</span></p>
               {req.reason && <p className="mt-2 text-[11px] text-slate-500 italic leading-relaxed">"{req.reason}"</p>}
             </div>
 
+            {activeTab === 'recebidas' && isMinePending(req) && (
+              <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-widest">Aguardando confirmação</p>
+                <p className="text-[11px] font-medium leading-relaxed">
+                  Você solicitou este plantão. A coordenação precisa confirmar no painel.
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-2">
-  {activeTab === 'recebidas' ? (
-    <button 
-      disabled={!!processingId} 
-      onClick={() => handleAction(req.id, 'approved', req)} 
-      className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-slate-200 transition-all active:scale-[0.98] disabled:opacity-50"
-    >
-      {processingId === req.id ? 'Processando...' : 'Pegar Plantão'}
-    </button>
+    {activeTab === 'recebidas' ? (
+    <button
+  disabled={
+    processingId === req.id || isMinePending(req) || !isOpen(req)
+  }
+  onClick={() => handleAction(req, 'pegar')}
+  className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-slate-200 transition-all active:scale-[0.98] disabled:opacity-60 ${
+    isMinePending(req)
+      ? 'bg-amber-100 text-amber-800'
+      : (isOpen(req) ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500')
+  }`}
+>
+  {processingId === req.id
+    ? 'Processando...'
+    : isMinePending(req)
+      ? 'Aguardando confirmação'
+      : isOpen(req)
+        ? 'Pegar Plantão'
+        : 'Indisponível'
+  }
+</button>
   ) : (
     req.status === 'pendente' && (
       <button 
         disabled={!!processingId} 
-        onClick={() => handleAction(req.id, 'cancelado')} 
+        onClick={() => handleAction(req, 'cancelado')} 
         className="w-full border-2 border-red-50 text-red-400 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors"
       >
         Remover anúncio
