@@ -187,7 +187,20 @@ export default function DashboardPage() {
              shift: shiftObj
            };
         });
-        setSwapRequests(formattedSwaps as ShiftSwapNotification[]);
+        // 🔥 Prioriza solicitações com interessado aguardando confirmação
+const sortedSwaps = formattedSwaps.sort((a, b) => {
+  const aHasTarget = !!a.target_user_id;
+  const bHasTarget = !!b.target_user_id;
+
+  // quem tem interessado vem primeiro
+  if (aHasTarget && !bHasTarget) return -1;
+  if (!aHasTarget && bHasTarget) return 1;
+
+  // se ambos iguais, mantém ordem por data (já vem desc, mas garantimos)
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+});
+
+setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
       }
     } catch (e) { console.error(e); }
     setSwapLoading(false);
@@ -440,12 +453,34 @@ useEffect(() => {
               {!swapLoading && swapRequests.length > 0 && (
                 <ul className="space-y-2 max-h-64 overflow-auto pr-1">
                   {swapRequests.map((r) => (
-                    <li key={r.id} className="border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50">
+                    <li
+  key={r.id}
+  className={`border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50 transition-all
+    ${r.target_user_id ? 'border-emerald-400 shadow-sm shadow-emerald-100' : ''}
+  `}
+>
                         <div className="flex justify-between items-center">
                            <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
                            <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + statusChipClass(r.status)}>{statusLabel(r.status)}</span>
                         </div>
-                        <div className="text-slate-600 mt-1">Pediu troca: <strong>{periodLabel(r.shift?.period as any)} {r.shift?.date ? formatDateBR(r.shift.date) : ''}</strong></div>
+                        <div className="text-slate-600 mt-1">
+  {r.target_user_id ? (
+    <p>
+      <span className="text-emerald-600 font-bold">
+        ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
+      </span>{' '}
+      a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]}
+      {' '}— <span className="text-[10px] text-slate-500">clique para confirmar</span>
+    </p>
+  ) : (
+    <p>
+      Solicitação de cobertura: <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
+    </p>
+  )}
+  <div className="text-[10px] text-slate-400 mt-1">
+    📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+  </div>
+</div>
                         <div className="flex justify-end mt-1">
                              <button onClick={() => router.push(`/solicitacoes/${r.id}`)} className="text-[10px] text-slate-600 underline">Ver detalhes</button>
                         </div>

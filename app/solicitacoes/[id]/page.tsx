@@ -204,17 +204,55 @@ export default function SwapRequestDetailPage() {
         return;
       }
 
-      const realHospitalId = reqMeta.hospital_id as string;
+            const realHospitalId = reqMeta.hospital_id as string;
+
+      // 🔒 BLOQUEIO: só admin/coordenador do hospital pode acessar esta página
+      const { data: membership, error: memErr } = await supabase
+        .from('hospital_users')
+        .select('role, is_admin')
+        .eq('user_id', user.id)
+        .eq('hospital_id', realHospitalId)
+        .maybeSingle();
+
+      if (memErr) {
+        console.error('Erro ao checar role:', memErr);
+        setErrorMsg('Erro ao validar permissões.');
+        setLoading(false);
+        router.replace('/medico');
+        return;
+      }
+
+      const isAllowed =
+        membership?.is_admin === true ||
+        membership?.role === 'admin' ||
+        membership?.role === 'coordenador';
+
+      if (!isAllowed) {
+        setErrorMsg('Você não tem permissão para gerenciar solicitações deste hospital.');
+        setLoading(false);
+        router.replace('/medico');
+        return;
+      }
 
       // 2) Se o hospital ativo estiver diferente, sincroniza (multi-hospital safe)
+            // 🔑 chave por usuário (evita bagunça multi-hospital / múltiplas abas)
+      const storageKey = `activeHospitalId:${user.id}`;
+
+      // fallback: se existir legado "activeHospitalId", migra uma vez
+      const legacyKey = 'activeHospitalId';
+
       const storedHospitalId =
         typeof window !== 'undefined'
-          ? window.localStorage.getItem('activeHospitalId')
+          ? (window.localStorage.getItem(storageKey) ||
+             window.localStorage.getItem(legacyKey))
           : null;
 
       if (typeof window !== 'undefined') {
         if (!storedHospitalId || storedHospitalId !== realHospitalId) {
-          window.localStorage.setItem('activeHospitalId', realHospitalId);
+          window.localStorage.setItem(storageKey, realHospitalId);
+
+          // opcional: mantém o legado sincronizado pra não quebrar outras telas antigas
+          window.localStorage.setItem(legacyKey, realHospitalId);
         }
       }
 
@@ -261,12 +299,22 @@ export default function SwapRequestDetailPage() {
     
     try {
       // 1. Atualiza o status da solicitação para 'aprovado'
-      const { error: reqError } = await supabase
+            // ✅ Só aprova se ainda estiver pendente (evita corrida com outra aba/admin)
+      const { data: updatedReq, error: reqError } = await supabase
         .from('shift_swap_requests')
         .update({ status: 'aprovado', target_user_id: finalDoctorId })
-        .eq('id', request.id);
+        .eq('id', request.id)
+        .eq('status', 'pendente')
+        .select('id')
+        .maybeSingle();
 
       if (reqError) throw reqError;
+
+      // se não atualizou, alguém já finalizou (aprovou/rejeitou/cancelou)
+      if (!updatedReq) {
+        setErrorMsg('Esta solicitação não está mais pendente (alguém já processou). Atualize a página.');
+        return;
+      }
 
       // 2. 🔥 EFETIVA A TROCA NA ESCALA (Atualiza a tabela shifts)
       const { error: shiftError } = await supabase
@@ -379,12 +427,27 @@ export default function SwapRequestDetailPage() {
               <p className="text-sm font-semibold text-slate-700">Definir quem assume o plantão</p>
               <p className="text-xs text-slate-500">Se a solicitação for para "Qualquer médico", você pode selecionar abaixo quem vai assumir. Isso atualizará a escala automaticamente.</p>
               
+{request.target_user_id ? (
+  <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4">
+    <div className="flex items-center gap-2 mb-1">
+      <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <p className="text-sm font-bold text-emerald-800">Interesse Registrado</p>
+    </div>
+    <p className="text-xs text-emerald-700">
+      O médico <strong>{request.target?.full_name ?? request.target?.email ?? 'Selecionado'}</strong> aceitou este plantão via aplicativo e está aguardando sua confirmação para assumir a escala.
+    </p>
+  </div>
+) : (
+  <p className="text-xs text-slate-500 mb-4">
+    Ainda não há interessados. Você pode atribuir um médico manualmente abaixo.
+  </p>
+)}
               <select 
-                value={selectedDoctor} 
-                onChange={e => setSelectedDoctor(e.target.value)}
-                disabled={!isEditable}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-slate-50"
-              >
+  value={selectedDoctor} 
+  onChange={e => setSelectedDoctor(e.target.value)}
+  disabled={!isEditable || !!request.target_user_id}
+  className={`w-full border rounded-lg px-3 py-2 text-sm ${request.target_user_id ? 'bg-slate-100' : 'bg-slate-50'}`}
+>
                 <option value="">Selecione o médico substituto...</option>
                 {doctors.map(d => (
                     <option key={d.id} value={d.id}>{d.name}</option>

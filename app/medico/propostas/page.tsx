@@ -25,19 +25,23 @@ type SwapRequest = {
   hospitals: { name: string | null } | null;
 };
 
-function statusBadge(status: SwapRequest['status']) {
-  const styles: Record<SwapRequest['status'], string> = {
+type DisplayStatus = SwapRequest['status'] | 'em_processo';
+
+function statusBadge(status: DisplayStatus) {
+  const styles: Record<DisplayStatus, string> = {
     aprovado: 'bg-emerald-100 text-emerald-700',
     rejeitado: 'bg-red-100 text-red-700',
     cancelado: 'bg-slate-100 text-slate-500',
     pendente: 'bg-amber-100 text-amber-700',
+    em_processo: 'bg-sky-100 text-sky-700',
   };
 
-  const labels: Record<SwapRequest['status'], string> = {
+  const labels: Record<DisplayStatus, string> = {
     aprovado: 'Aprovado',
     rejeitado: 'Recusado',
     cancelado: 'Cancelado',
     pendente: 'Pendente',
+    em_processo: 'Em processo',
   };
 
   return (
@@ -93,15 +97,16 @@ function PropostasContent() {
         .gte('shift.date', monthStart)
         .order('created_at', { ascending: false }),
 
-      // DISPONÍVEIS: Trocas abertas nos hospitais que eu trabalho
-      supabase
-        .from('shift_swap_requests')
-        .select(query)
-        .in('hospital_id', hospitalIds) // Filtra pela rede do médico
-        .or(`target_user_id.eq.${uid},target_user_id.is.null`)
-        .neq('requester_user_id', uid)
-        .eq('status', 'pendente')
-        .order('created_at', { ascending: false })
+      // DISPONÍVEIS: Trocas pendentes nos hospitais que eu trabalho
+// ✅ inclui também as que já têm interessado (target_user_id != null)
+// pra eu conseguir mostrar "Já em processo" pros outros médicos.
+supabase
+  .from('shift_swap_requests')
+  .select(query)
+  .in('hospital_id', hospitalIds)
+  .neq('requester_user_id', uid)
+  .eq('status', 'pendente')
+  .order('created_at', { ascending: false })
     ]);
 
     const normalize = (list: any[]) => list.map(item => ({
@@ -135,6 +140,19 @@ function PropostasContent() {
   const isOpen = (req: SwapRequest) =>
     req.status === 'pendente' && req.target_user_id === null;
 
+const isTakenByOther = (req: SwapRequest) =>
+  req.status === 'pendente' &&
+  req.target_user_id !== null &&
+  !!userId &&
+  req.target_user_id !== userId;
+
+const displayStatus = (req: SwapRequest): DisplayStatus => {
+  if (req.status === 'pendente' && req.target_user_id) return 'em_processo';
+  return req.status;
+};
+
+const firstName = (s?: string | null) => (s ?? '').trim().split(' ')[0] || 'Alguém';
+
   async function executeAction(
   id: number,
   action: 'pegar' | 'rejeitado' | 'cancelado',
@@ -146,14 +164,21 @@ function PropostasContent() {
 
     if (action === 'pegar') {
       // médico pega: mantém pendente e seta target_user_id
-      const { error } = await supabase
-        .from('shift_swap_requests')
-        .update({ target_user_id: userId, status: 'pendente' })
-        .eq('id', id);
+      const { data, error } = await supabase
+  .from('shift_swap_requests')
+  .update({ target_user_id: userId, status: 'pendente' })
+  .eq('id', id)
+  .is('target_user_id', null)
+  .select('id')
+  .maybeSingle();
 
-      if (error) throw error;
+if (error) throw error;
+if (!data) {
+  toast.error('Alguém já pegou esse plantão antes de você.');
+  return;
+}
 
-      toast.success('Pedido enviado! Aguardando confirmação da coordenação.');
+toast.success('Pedido enviado! Aguardando confirmação da coordenação.');
     } else {
       // rejeitar/cancelar: só muda status (valores do banco)
       const { error } = await supabase
@@ -219,10 +244,18 @@ const handleAction = (req: SwapRequest, action: 'pegar' | 'rejeitado' | 'cancela
             <div className="flex justify-between items-start mb-4">
               <div>
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{activeTab === 'recebidas' ? 'Anunciado por' : 'Destinatário'}</p>
-                <p className="text-sm font-bold text-slate-800">{activeTab === 'recebidas' ? (req.requester?.full_name ?? 'Colega') : (req.target_user_id ? req.target?.full_name : 'Público (Qualquer um)')}</p>
+                <p className="text-sm font-bold text-slate-800">
+  {activeTab === 'recebidas'
+    ? (req.requester?.full_name ?? 'Colega')
+    : (req.target_user_id ? (req.target?.full_name ?? 'Médico') : 'Marketplace (Qualquer médico)')}
+</p>
                 <p className="text-[10px] text-emerald-600 font-bold uppercase">{req.hospitals?.name}</p>
               </div>
-              {statusBadge(req.status)}
+              {statusBadge(
+  activeTab === 'enviadas'
+    ? req.status
+    : displayStatus(req)
+)}
             </div>
             
                         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
@@ -231,46 +264,69 @@ const handleAction = (req: SwapRequest, action: 'pegar' | 'rejeitado' | 'cancela
               {req.reason && <p className="mt-2 text-[11px] text-slate-500 italic leading-relaxed">"{req.reason}"</p>}
             </div>
 
-            {activeTab === 'recebidas' && isMinePending(req) && (
-              <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-widest">Aguardando confirmação</p>
-                <p className="text-[11px] font-medium leading-relaxed">
-                  Você solicitou este plantão. A coordenação precisa confirmar no painel.
-                </p>
-              </div>
-            )}
+{activeTab === 'enviadas' && req.status === 'pendente' && req.target_user_id && (
+  <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Interessado</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      <span className="font-bold">{firstName(req.target?.full_name)}</span> aceitou sua troca. Agora falta a coordenação confirmar no painel.
+    </p>
+  </div>
+)}
 
+{activeTab === 'recebidas' && isMinePending(req) && (
+  <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Aguardando confirmação</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      Você solicitou este plantão. A coordenação precisa confirmar no painel.
+    </p>
+  </div>
+)}
+
+{activeTab === 'recebidas' && isTakenByOther(req) && (
+  <div className="mb-4 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Já em processo de troca</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      <span className="font-bold">{firstName(req.target?.full_name)}</span> já aceitou esse plantão e está aguardando a coordenação confirmar.
+    </p>
+  </div>
+)}
             <div className="flex gap-2">
     {activeTab === 'recebidas' ? (
     <button
   disabled={
-    processingId === req.id || isMinePending(req) || !isOpen(req)
+    processingId === req.id || isMinePending(req) || isTakenByOther(req) || !isOpen(req)
   }
   onClick={() => handleAction(req, 'pegar')}
-  className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase shadow-xl shadow-slate-200 transition-all active:scale-[0.98] disabled:opacity-60 ${
+  className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all active:scale-[0.98] disabled:opacity-60 ${
     isMinePending(req)
       ? 'bg-amber-100 text-amber-800'
-      : (isOpen(req) ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500')
+      : isTakenByOther(req)
+        ? 'bg-slate-100 text-slate-400 border border-slate-200'
+        : isOpen(req)
+          ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+          : 'bg-slate-200 text-slate-500'
   }`}
 >
   {processingId === req.id
     ? 'Processando...'
     : isMinePending(req)
-      ? 'Aguardando confirmação'
-      : isOpen(req)
-        ? 'Pegar Plantão'
-        : 'Indisponível'
+      ? 'Aguardando coordenação'
+      : isTakenByOther(req)
+        ? 'Já em processo de troca'
+        : isOpen(req)
+          ? 'Pegar Plantão'
+          : 'Indisponível'
   }
 </button>
   ) : (
     req.status === 'pendente' && (
       <button 
-        disabled={!!processingId} 
-        onClick={() => handleAction(req, 'cancelado')} 
-        className="w-full border-2 border-red-50 text-red-400 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors"
-      >
-        Remover anúncio
-      </button>
+  disabled={!!processingId} 
+  onClick={() => handleAction(req, 'cancelado')} 
+  className="w-full border-2 border-red-50 text-red-400 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-red-50 transition-colors"
+>
+  Remover anúncio
+</button>
     )
   )}
 </div>
