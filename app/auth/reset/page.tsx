@@ -14,42 +14,83 @@ export default function ResetPasswordPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Opcional: garantir que existe sessão de recovery
-  useEffect(() => {
-  const run = async () => {
-    try {
-      // Quando vem do email, normalmente vem com ?code=...
-      // Isso cria a sessão de recovery necessária pro updateUser funcionar
-      const href = typeof window !== 'undefined' ? window.location.href : '';
-      if (href) {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(href);
-        if (error) {
-          console.error(error);
-          setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-          return;
-        }
-        // opcional: se quiser validar
-        if (!data?.session) {
-          setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-        }
-      }
-    } catch (e) {
-      console.error(e);
-      setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-    }
-  };
+    const [validating, setValidating] = useState(true);
+  const [canSetPassword, setCanSetPassword] = useState(false);
 
-  run();
-}, []);
+  useEffect(() => {
+    const run = async () => {
+      try {
+        if (typeof window === 'undefined') return;
+
+        setValidating(true);
+        setErrorMsg(null);
+
+        const url = new URL(window.location.href);
+
+        // ✅ 1) Fluxo PKCE: vem como ?code=...
+        const code = url.searchParams.get('code');
+
+if (code) {
+  const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+
+  if (error || !data?.session) {
+    console.error(error);
+    setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+    setCanSetPassword(false);
+    return;
+  }
+
+  setCanSetPassword(true);
+  return;
+}
+
+// ✅ 2) Fluxo alternativo: tokens no hash (#access_token=...)
+if (url.hash && url.hash.includes('access_token=')) {
+  const authAny = supabase.auth as any;
+  const { data, error } = await authAny.getSessionFromUrl({ storeSession: true });
+
+  if (error || !data?.session) {
+    console.error(error);
+    setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+    setCanSetPassword(false);
+    return;
+  }
+
+  setCanSetPassword(true);
+  return;
+}
+
+        // ✅ 3) Se abriu /auth/reset “na mão” (sem link)
+        setErrorMsg('Abra esta página usando o link enviado por e-mail.');
+        setCanSetPassword(false);
+      } catch (e) {
+        console.error(e);
+        setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+        setCanSetPassword(false);
+      } finally {
+        setValidating(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleUpdate(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    setErrorMsg(null);
+  e.preventDefault();
+  setMsg(null);
+  setErrorMsg(null);
 
-    if (password.length < 8) {
-      setErrorMsg('A senha deve ter pelo menos 8 caracteres.');
-      return;
-    }
+  // 🔒 Impede envio se o link não foi validado
+  if (!canSetPassword) {
+    setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+    return;
+  }
+
+  if (password.length < 8) {
+    setErrorMsg('A senha deve ter pelo menos 8 caracteres.');
+    return;
+  }
     if (password !== confirm) {
       setErrorMsg('As senhas não conferem.');
       return;
@@ -109,6 +150,12 @@ export default function ResetPasswordPage() {
           </div>
         )}
 
+                {validating && (
+          <div className="mb-4 bg-slate-50 text-slate-700 text-xs p-3 rounded-lg border border-slate-200">
+            Validando link...
+          </div>
+        )}
+
         <form onSubmit={handleUpdate} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -138,9 +185,9 @@ export default function ResetPasswordPage() {
             />
           </div>
 
-          <button
+                    <button
             type="submit"
-            disabled={loading}
+            disabled={loading || validating || !canSetPassword}
             className="w-full bg-slate-900 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:opacity-70 transition-colors"
           >
             {loading ? 'Salvando...' : 'Atualizar senha'}

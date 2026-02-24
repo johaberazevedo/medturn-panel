@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import chromium from '@sparticuz/chromium-min';
+import chromium from '@sparticuz/chromium';
 import puppeteerCore from 'puppeteer-core';
-import puppeteer from 'puppeteer'; // 👈 DEV (Mac)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -520,9 +519,13 @@ const logoBase64 = fs.readFileSync(logoPath).toString('base64');
   logoBase64,
 });
 
-    let browser;
+    let browser: any;
 
-if (process.env.NODE_ENV === 'production') {
+// ✅ Sparticuz (chromium) é para Linux (Vercel).
+// No Mac/Windows, mesmo com `next start` (NODE_ENV=production), isso dá ENOEXEC.
+const isLinux = process.platform === 'linux';
+
+if (isLinux) {
   const executablePath = await chromium.executablePath();
 
   browser = await puppeteerCore.launch({
@@ -531,6 +534,9 @@ if (process.env.NODE_ENV === 'production') {
     headless: true,
   });
 } else {
+  // ✅ Local (Mac/Windows): usa o Chrome do puppeteer
+  const puppeteer = (await import('puppeteer')).default;
+
   browser = await puppeteer.launch({
     headless: true,
   });
