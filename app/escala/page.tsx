@@ -529,11 +529,11 @@ setLoading(false);
 </button>
 
 <button
-  onClick={onGenerateScalePDF}
-  disabled={!hospitalId}
-  className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+  disabled
+  className="text-xs px-3 py-1.5 rounded-lg bg-slate-300 text-slate-500 cursor-not-allowed"
+  title="Temporariamente indisponível"
 >
-  Baixar PDF da escala
+  Gerador de PDF em construção
 </button>
             </div>
           </div>
