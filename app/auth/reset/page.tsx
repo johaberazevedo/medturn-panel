@@ -18,63 +18,90 @@ export default function ResetPasswordPage() {
   const [canSetPassword, setCanSetPassword] = useState(false);
 
   useEffect(() => {
-    const run = async () => {
-      try {
-        if (typeof window === 'undefined') return;
+  const run = async () => {
+    try {
+      if (typeof window === 'undefined') return;
 
-        setValidating(true);
-        setErrorMsg(null);
+      setValidating(true);
+      setErrorMsg(null);
 
-        const url = new URL(window.location.href);
+      const url = new URL(window.location.href);
 
-        // ✅ 1) Fluxo PKCE: vem como ?code=...
-        const code = url.searchParams.get('code');
+      // ✅ 0) Fluxo MAIS estável: token_hash vindo direto no teu /auth/reset
+      const token_hash = url.searchParams.get('token_hash');
+      const type = (url.searchParams.get('type') ?? 'recovery') as 'recovery';
 
-if (code) {
-  const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+      if (token_hash) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          type,
+          token_hash,
+        });
 
-  if (error || !data?.session) {
-    console.error(error);
-    setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-    setCanSetPassword(false);
-    return;
-  }
+        if (error || !data?.session) {
+          console.error(error);
+          setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+          setCanSetPassword(false);
+          return;
+        }
 
-  setCanSetPassword(true);
-  return;
-}
+        setCanSetPassword(true);
 
-// ✅ 2) Fluxo alternativo: tokens no hash (#access_token=...)
-if (url.hash && url.hash.includes('access_token=')) {
-  const authAny = supabase.auth as any;
-  const { data, error } = await authAny.getSessionFromUrl({ storeSession: true });
-
-  if (error || !data?.session) {
-    console.error(error);
-    setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-    setCanSetPassword(false);
-    return;
-  }
-
-  setCanSetPassword(true);
-  return;
-}
-
-        // ✅ 3) Se abriu /auth/reset “na mão” (sem link)
-        setErrorMsg('Abra esta página usando o link enviado por e-mail.');
-        setCanSetPassword(false);
-      } catch (e) {
-        console.error(e);
-        setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
-        setCanSetPassword(false);
-      } finally {
-        setValidating(false);
+        // limpa URL (higiene)
+        window.history.replaceState({}, document.title, '/auth/reset');
+        return;
       }
-    };
 
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      // ✅ 1) Fluxo PKCE: vem como ?code=...
+      const code = url.searchParams.get('code');
+
+      if (code) {
+        // ⚠️ aqui é só o CODE (não a URL inteira)
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error || !data?.session) {
+          console.error(error);
+          setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+          setCanSetPassword(false);
+          return;
+        }
+
+        setCanSetPassword(true);
+        window.history.replaceState({}, document.title, '/auth/reset');
+        return;
+      }
+
+      // ✅ 2) Fluxo alternativo: tokens no hash (#access_token=...)
+      if (url.hash && url.hash.includes('access_token=')) {
+        const authAny = supabase.auth as any;
+        const { data, error } = await authAny.getSessionFromUrl({ storeSession: true });
+
+        if (error || !data?.session) {
+          console.error(error);
+          setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+          setCanSetPassword(false);
+          return;
+        }
+
+        setCanSetPassword(true);
+        window.history.replaceState({}, document.title, '/auth/reset');
+        return;
+      }
+
+      // ✅ 3) Se abriu /auth/reset “na mão” (sem link)
+      setErrorMsg('Abra esta página usando o link enviado por e-mail.');
+      setCanSetPassword(false);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('Link inválido ou expirado. Solicite um novo link.');
+      setCanSetPassword(false);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  run();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   async function handleUpdate(e: React.FormEvent) {
   e.preventDefault();
