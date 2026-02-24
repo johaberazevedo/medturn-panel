@@ -18,6 +18,25 @@ type Membership = {
   hospitals: { name: string | null } | null;
 };
 
+// =========================================================
+// ✅ Helpers de data (padrão igual ao relatório)
+// =========================================================
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function monthStartISO(year: number, monthIndex: number) {
+  // monthIndex: 0..11
+  return `${year}-${pad2(monthIndex + 1)}-01`;
+}
+
+function nextMonthStartISO(year: number, monthIndex: number) {
+  // retorna início do próximo mês (exclusive)
+  const y = monthIndex === 11 ? year + 1 : year;
+  const m = monthIndex === 11 ? 1 : (monthIndex + 2);
+  return `${y}-${pad2(m)}-01`;
+}
+
 // Config de capacidade por período
 const PERIOD_CONFIG: {
   key: 'manha' | 'tarde' | 'noite' | '24h';
@@ -69,10 +88,63 @@ function EscalaMensalContent() {
   const [loading, setLoading] = useState(true);
 
   // Estados para cópia de mês
-  const [copyTargetMonth, setCopyTargetMonth] = useState<string>('');
+    const [copyTargetMonth, setCopyTargetMonth] = useState<string>('');
   const [copyLoading, setCopyLoading] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+
+  // =========================================================
+  // ✅ PDF da Escala (mês atual)
+  // =========================================================
+  const onGenerateScalePDF = async () => {
+    if (!hospitalId) return;
+
+    try {
+      const m1 = month + 1; // seu state month é 0..11
+
+      const startDate = monthStartISO(year, month);
+      const endDate = nextMonthStartISO(year, month);
+
+      const res = await fetch('/api/report/scale-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospitalId,
+          hospitalName,
+          year,
+          month: m1, // 1..12
+          startDate,
+          endDate,
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        console.error(json);
+        alert(
+          json?.detail
+            ? `${json.error} — ${json.detail}`
+            : (json?.error ?? 'Falha ao gerar PDF da escala.')
+        );
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `medturn_escala_${year}-${String(m1).padStart(2, '0')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert('Falha ao gerar PDF da escala.');
+    }
+  };
 
   // Estilos dos cabeçalhos dos grupos
   const groupStyles: Record<string, string> = {
@@ -449,12 +521,20 @@ setLoading(false);
                 className="border rounded-lg px-2 py-1.5 text-xs"
               />
               <button
-                onClick={handleCopyMonth}
-                disabled={copyLoading || !hospitalId}
-                className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60"
-              >
-                {copyLoading ? 'Copiando...' : 'Copiar escala para mês'}
-              </button>
+  onClick={handleCopyMonth}
+  disabled={copyLoading || !hospitalId}
+  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60"
+>
+  {copyLoading ? 'Copiando...' : 'Copiar escala para mês'}
+</button>
+
+<button
+  onClick={onGenerateScalePDF}
+  disabled={!hospitalId}
+  className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+>
+  Baixar PDF da escala
+</button>
             </div>
           </div>
 

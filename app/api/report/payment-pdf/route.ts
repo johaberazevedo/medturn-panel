@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
+export const runtime = 'nodejs';
+
+import fs from 'fs';
+import path from 'path';
+
 function requireEnv(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env var: ${name}`);
@@ -110,8 +115,18 @@ export async function POST(req: Request) {
 
     // 2) Gera PDF
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+// ✅ Logo MedTurn (PNG em /public)
+const logoPath = path.join(process.cwd(), 'public', 'medturn-logo-rounded.png');
+const logoBytes = fs.readFileSync(logoPath);
+const logoImg = await pdfDoc.embedPng(logoBytes);
+
+// tamanho “fixo” (estilo do calendário)
+const LOGO_H = 28; // points
+const logoScale = LOGO_H / logoImg.height;
+const LOGO_W = logoImg.width * logoScale;
 
     // ✅ A4 em paisagem (landscape)
 const pageWidth = 841.89;  // A4 points (landscape width)
@@ -141,42 +156,73 @@ const pageHeight = 595.28; // A4 points (landscape height)
     }
 
     function drawHeader(page: any) {
-      const yTop = pageHeight - margin;
+  const yTop = pageHeight - margin;
 
-      page.drawText(title, {
-        x: margin,
-        y: yTop - 18,
-        size: 14,
-        font: fontBold,
-        color: rgb(0, 0, 0),
-      });
+  // ✅ Brand: Logo + MedTurn
+  const brandX = margin;
+  const brandY = yTop - LOGO_H; // topo alinhado
+
+  page.drawImage(logoImg, {
+    x: brandX,
+    y: brandY,
+    width: LOGO_W,
+    height: LOGO_H,
+  });
+
+  const brandTextX = brandX + LOGO_W + 10;
+  page.drawText('MedTurn', {
+    x: brandTextX,
+    y: brandY + 10,  // alinhado visualmente
+    size: 12,
+    font: fontBold,
+    color: rgb(0.06, 0.09, 0.16), // parecido com o #0f172a
+  });
+
+  page.drawText('Gestão inteligente de plantões', {
+    x: brandTextX,
+    y: brandY + 2,
+    size: 8,
+    font,
+    color: rgb(0.39, 0.45, 0.55), // parecido com #64748b
+  });
+
+  // 🔹 Conteúdo do header começa mais abaixo
+  const headerStartY = yTop - 18 - 10; // pequeno ajuste
+
+  page.drawText(title, {
+    x: margin,
+    y: headerStartY - 18,
+    size: 14,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
 
       page.drawText(subtitle, {
-        x: margin,
-        y: yTop - 38,
-        size: 11,
-        font,
-        color: rgb(0.15, 0.15, 0.15),
-      });
+  x: margin,
+  y: headerStartY - 38,
+  size: 11,
+  font,
+  color: rgb(0.15, 0.15, 0.15),
+});
 
-      page.drawText(periodLine, {
-        x: margin,
-        y: yTop - 55,
-        size: 9,
-        font,
-        color: rgb(0.35, 0.35, 0.35),
-      });
+page.drawText(periodLine, {
+  x: margin,
+  y: headerStartY - 55,
+  size: 9,
+  font,
+  color: rgb(0.35, 0.35, 0.35),
+});
 
-      page.drawText(generatedAt, {
-        x: margin,
-        y: yTop - 68,
-        size: 9,
-        font,
-        color: rgb(0.35, 0.35, 0.35),
-      });
+page.drawText(generatedAt, {
+  x: margin,
+  y: headerStartY - 68,
+  size: 9,
+  font,
+  color: rgb(0.35, 0.35, 0.35),
+});
 
       // Cabeçalho da tabela
-      const y = yTop - headerH;
+      const y = headerStartY - headerH;
 
       page.drawText('Médico', { x: col.medico, y, size: 9, font: fontBold });
       page.drawText('Semana (Total/Chefe)', { x: col.semana, y, size: 9, font: fontBold });
@@ -278,7 +324,7 @@ page.drawText(totalTxt, {
     });
 
     page.drawText(
-      'Obs: chefia é contabilizada dentro de cada categoria (entre parênteses). Etiquetas (PED/UTI/ELET) não alteram cálculo por enquanto.',
+      'Obs: chefia é contabilizada dentro de cada categoria (entre parênteses). Etiquetas (PED/UTI/ELET) não alteram cálculo, sendo somente informativas.',
       { x: margin, y: margin + 24, size: 8, font, color: rgb(0.35, 0.35, 0.35) }
     );
 
