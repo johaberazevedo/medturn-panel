@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import chromium from '@sparticuz/chromium';
 import puppeteerCore from 'puppeteer-core';
-import puppeteer from 'puppeteer'; // 👈 só pra DEV/local (vem com Chrome)
+import puppeteer from 'puppeteer'; // 👈 DEV (Mac)
 export const runtime = 'nodejs';
 import fs from 'fs';
 import path from 'path';
@@ -518,13 +518,10 @@ const logoBase64 = fs.readFileSync(logoPath).toString('base64');
   logoBase64,
 });
 
-    const isProd = process.env.NODE_ENV === 'production';
+    let browser;
 
-// ✅ PROD (Vercel/Linux): sparticuz + puppeteer-core
-// ✅ DEV (Mac): puppeteer (bundle do Chrome) sem executablePath
-let browser: any;
-
-if (isProd) {
+if (process.env.NODE_ENV === 'production') {
+  // 🔥 Vercel (Linux)
   const executablePath = await chromium.executablePath();
 
   browser = await puppeteerCore.launch({
@@ -533,6 +530,7 @@ if (isProd) {
     headless: true,
   });
 } else {
+  // 🔥 Mac / Local
   browser = await puppeteer.launch({
     headless: true,
   });
