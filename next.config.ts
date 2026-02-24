@@ -1,14 +1,12 @@
 import type { NextConfig } from "next";
 
-const nextConfig = {
-  // ✅ precisa ficar NO ROOT (não em experimental)
+const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
-    // inclui chromium + brotli files dentro da serverless function
+    // ✅ aponte pro TS (fonte)
     "app/api/report/scale-pdf/route.ts": [
-      "./node_modules/@sparticuz/chromium/**",
-      "./node_modules/@sparticuz/chromium-min/**",
+      "./node_modules/@sparticuz/chromium/**/*",
     ],
   },
-} satisfies NextConfig as NextConfig;
+};
 
 export default nextConfig;

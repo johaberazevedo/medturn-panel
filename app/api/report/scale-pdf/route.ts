@@ -528,11 +528,11 @@ const isLinux = process.platform === 'linux';
 if (isLinux) {
   const executablePath = await chromium.executablePath();
 
-  browser = await puppeteerCore.launch({
-    args: chromium.args,
-    executablePath,
-    headless: true,
-  });
+browser = await puppeteerCore.launch({
+  args: chromium.args,
+  executablePath,
+  headless: true,
+});
 } else {
   // ✅ Local (Mac/Windows): usa o Chrome do puppeteer
   const puppeteer = (await import('puppeteer')).default;
