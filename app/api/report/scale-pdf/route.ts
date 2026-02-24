@@ -4,6 +4,8 @@ import chromium from '@sparticuz/chromium';
 import puppeteerCore from 'puppeteer-core';
 import puppeteer from 'puppeteer'; // 👈 DEV (Mac)
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 import fs from 'fs';
 import path from 'path';
 
@@ -521,16 +523,14 @@ const logoBase64 = fs.readFileSync(logoPath).toString('base64');
     let browser;
 
 if (process.env.NODE_ENV === 'production') {
-  // 🔥 Vercel (Linux)
   const executablePath = await chromium.executablePath();
 
   browser = await puppeteerCore.launch({
-    args: chromium.args,
-    executablePath,
-    headless: true,
-  });
+  args: chromium.args,
+  executablePath,
+  headless: true,
+});
 } else {
-  // 🔥 Mac / Local
   browser = await puppeteer.launch({
     headless: true,
   });
