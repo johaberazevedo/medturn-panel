@@ -1,10 +1,10 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // ✅ a chave é o PATH da rota (não o arquivo)
   outputFileTracingIncludes: {
-    // ✅ aponte pro TS (fonte)
-    "app/api/report/scale-pdf/route.ts": [
-      "./node_modules/@sparticuz/chromium/**/*",
+    '/api/report/scale-pdf': [
+      'node_modules/@sparticuz/chromium/**',
     ],
   },
 };
