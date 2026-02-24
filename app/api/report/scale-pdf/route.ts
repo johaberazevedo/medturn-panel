@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import puppeteerCore from 'puppeteer-core';
 import puppeteer from 'puppeteer'; // 👈 DEV (Mac)
 export const runtime = 'nodejs';
@@ -526,10 +526,10 @@ if (process.env.NODE_ENV === 'production') {
   const executablePath = await chromium.executablePath();
 
   browser = await puppeteerCore.launch({
-  args: chromium.args,
-  executablePath,
-  headless: true,
-});
+    args: chromium.args,
+    executablePath,
+    headless: true,
+  });
 } else {
   browser = await puppeteer.launch({
     headless: true,
