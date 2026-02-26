@@ -57,6 +57,39 @@ function formatDate(dateStr: string) {
   return `${d}/${m}/${y}`;
 }
 
+function localYYYYMMDD(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function minutesNowLocal(d = new Date()) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function isExpiredShift(shift: {
+  date: string;
+  period: 'manha' | 'tarde' | 'noite' | '24h';
+}) {
+  const now = new Date();
+  const today = localYYYYMMDD(now);
+
+  if (shift.date < today) return true;
+  if (shift.date > today) return false;
+
+  if (shift.period === '24h') return false;
+
+  const minutes = minutesNowLocal(now);
+
+  const cutoff: Record<'manha' | 'tarde' | 'noite', number> = {
+    manha: 9 * 60,
+    tarde: 14 * 60,
+    noite: 20 * 60,
+  };
+
+  return minutes >= cutoff[shift.period];
+}
 function PropostasContent() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'recebidas' | 'enviadas'>('recebidas');
@@ -85,7 +118,7 @@ function PropostasContent() {
     }
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`; // ✅ local
     const query = '*, requester:requester_user_id(full_name), target:target_user_id(full_name), shift:from_shift_id(date, period), hospitals(name)';
 
     const [sentRes, receivedRes] = await Promise.all([
@@ -109,17 +142,27 @@ supabase
   .order('created_at', { ascending: false })
     ]);
 
-    const normalize = (list: any[]) => list.map(item => ({
+const normalizeBase = (list: any[]) =>
+  list
+    .map(item => ({
       ...item,
       requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
       target: Array.isArray(item.target) ? item.target[0] : item.target,
       shift: Array.isArray(item.shift) ? item.shift[0] : item.shift,
       hospitals: Array.isArray(item.hospitals) ? item.hospitals[0] : item.hospitals,
-    })).filter(item => item.shift !== null);
+    }))
+    .filter(item => item.shift !== null);
 
-    setSent(normalize(sentRes.data ?? []) as SwapRequest[]);
-    setReceived(normalize(receivedRes.data ?? []) as SwapRequest[]);
-    setLoading(false);
+// ✅ Minhas Trocas (histórico) — continua mostrando mesmo se já passou
+const normalizeSent = (list: any[]) => normalizeBase(list);
+
+// ✅ Disponíveis — remove plantões com data passada baseado no fuso do celular
+const normalizeReceived = (list: any[]) =>
+  normalizeBase(list).filter(item => !isExpiredShift(item.shift));
+
+setSent(normalizeSent(sentRes.data ?? []) as SwapRequest[]);
+setReceived(normalizeReceived(receivedRes.data ?? []) as SwapRequest[]);
+setLoading(false);
   }, []);
 
     useEffect(() => {

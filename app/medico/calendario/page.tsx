@@ -97,6 +97,38 @@ function getHospitalColor(hid: string, map: Record<string, string>) {
   return map[hid] ?? '#64748b'; // slate-500 fallback
 }
 
+// ✅ Regra de expiração por período (fuso do celular)
+function localYYYYMMDD(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function minutesNowLocal(d = new Date()) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function isExpiredShift(shift: { date: string; period: 'manha' | 'tarde' | 'noite' | '24h' }) {
+  const now = new Date();
+  const today = localYYYYMMDD(now);
+
+  if (shift.date < today) return true;   // dia anterior
+  if (shift.date > today) return false;  // dia futuro
+
+  // hoje
+  if (shift.period === '24h') return false;
+
+  const minutes = minutesNowLocal(now);
+  const cutoff: Record<'manha' | 'tarde' | 'noite', number> = {
+    manha: 9 * 60,
+    tarde: 14 * 60,
+    noite: 20 * 60,
+  };
+
+  return minutes >= cutoff[shift.period];
+}
+
 export default function MedicoCalendarioPage() {
   const router = useRouter();
 
@@ -208,9 +240,12 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
     .or(`target_user_id.is.null,target_user_id.eq.${uId}`);
 
   const oppMap: MonthOpportunities = {};
-  (swapData ?? []).forEach((item: any) => {
+    (swapData ?? []).forEach((item: any) => {
     const shift = Array.isArray(item.shift) ? item.shift[0] : item.shift;
     if (!shift) return;
+
+    // ✅ expira por período (fuso do celular)
+    if (shift?.date && shift?.period && isExpiredShift(shift)) return;
 
     const d = shift.date as string;
     if (d < monthStart || d > monthEnd) return;

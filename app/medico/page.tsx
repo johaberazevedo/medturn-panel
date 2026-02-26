@@ -10,6 +10,40 @@ type NextShift = {
   hospital_name: string;
 };
 
+function localYYYYMMDD(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function minutesNowLocal(d = new Date()) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function isExpiredShift(shift: {
+  date: string;
+  period: 'manha' | 'tarde' | 'noite' | '24h';
+}) {
+  const now = new Date();
+  const today = localYYYYMMDD(now);
+
+  if (shift.date < today) return true;
+  if (shift.date > today) return false;
+
+  // hoje
+  if (shift.period === '24h') return false;
+
+  const minutes = minutesNowLocal(now);
+
+  const cutoff: Record<'manha' | 'tarde' | 'noite', number> = {
+    manha: 9 * 60,   // 09:00
+    tarde: 14 * 60,  // 14:00
+    noite: 20 * 60,  // 20:00
+  };
+
+  return minutes >= cutoff[shift.period];
+}
 export default function MedicoHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -30,46 +64,61 @@ export default function MedicoHomePage() {
       const hospitalIds = userHosp?.map(h => h.hospital_id) || [];
 
       if (hospitalIds.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
+  const today = localYYYYMMDD(); // ✅ fuso do celular (helper do topo)
 
-        // 1. Busca o próximo plantão para o card do header
-        const { data: shifts } = await supabase
-          .from('shifts')
-          .select('date, period, hospitals(name)')
-          .eq('doctor_user_id', user.id)
-          .gte('date', today)
-          .order('date', { ascending: true })
-          .limit(1)
-          .maybeSingle();
+// 1. Busca o próximo plantão para o card do header
+const { data: shifts } = await supabase
+  .from('shifts')
+  .select('date, period, hospitals(name)')
+  .eq('doctor_user_id', user.id)
+  .gte('date', today) // ✅ fuso local
+  .order('date', { ascending: true })
+  .limit(1)
+  .maybeSingle();
 
-        if (shifts) {
-          setNextShift({
-            date: shifts.date,
-            period: shifts.period,
-            hospital_name: (shifts.hospitals as any)?.name || 'Hospital'
-          });
-        }
+if (shifts) {
+  setNextShift({
+    date: shifts.date,
+    period: shifts.period,
+    hospital_name: (shifts.hospitals as any)?.name || 'Hospital',
+  });
+}
 
-        // 2. ✅ LÓGICA DO BOTÃO: Verifica se tem plantão HOJE com check-in LIGADO
-        const { data: todayShifts } = await supabase
-          .from('shifts')
-          .select('id, hospitals(is_checkin_enabled)')
-          .eq('doctor_user_id', user.id)
-          .eq('date', today);
+// 2. ✅ LÓGICA DO BOTÃO: Verifica se tem plantão HOJE com check-in LIGADO
+const { data: todayShifts } = await supabase
+  .from('shifts')
+  .select('id, hospitals(is_checkin_enabled)')
+  .eq('doctor_user_id', user.id)
+  .eq('date', today); // ✅ fuso local
 
-        const hasEnabledCheckin = todayShifts?.some(s => (s.hospitals as any)?.is_checkin_enabled === true);
-        setCanCheckin(!!hasEnabledCheckin);
+const hasEnabledCheckin = todayShifts?.some(
+  s => (s.hospitals as any)?.is_checkin_enabled === true
+);
+setCanCheckin(!!hasEnabledCheckin);
 
-        // 3. Busca solicitações de troca
-        const { count } = await supabase
-          .from('shift_swap_requests')
-          .select('*', { count: 'exact', head: true })
-          .in('hospital_id', hospitalIds)
-          .eq('status', 'pendente')
-          .neq('requester_user_id', user.id)
-          .or(`target_user_id.eq.${user.id},target_user_id.is.null`);
-        
-        setStats({ disponiveis: count || 0 });
+// 3. ✅ Badge "Plantões Disponíveis" batendo com a regra por período do Marketplace
+const { data: swapRows, error: swapErr } = await supabase
+  .from('shift_swap_requests')
+  .select('id, target_user_id, shift:from_shift_id(date, period)')
+  .in('hospital_id', hospitalIds)
+  .eq('status', 'pendente')
+  .neq('requester_user_id', user.id)
+  .or(`target_user_id.eq.${user.id},target_user_id.is.null`);
+
+if (swapErr) {
+  setStats({ disponiveis: 0 });
+} else {
+  const countDisponiveis = (swapRows ?? [])
+    .map((row: any) => ({
+      ...row,
+      shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
+    }))
+    .filter(r => r.shift?.date && r.shift?.period) // precisa date+period
+    .filter(r => !isExpiredShift(r.shift))          // ✅ agora expira por período
+    .length;
+
+  setStats({ disponiveis: countDisponiveis });
+}
       }
 
       setLoading(false);
