@@ -48,7 +48,7 @@ export default function MedicoHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('Doutor(a)');
-  const [stats, setStats] = useState({ disponiveis: 0 });
+  const [stats, setStats] = useState({ disponiveis: 0, disponibilidade30d: 0 });
   const [nextShift, setNextShift] = useState<NextShift | null>(null);
   const [canCheckin, setCanCheckin] = useState(false); // ✅ Novo estado para o botão
 
@@ -105,20 +105,40 @@ const { data: swapRows, error: swapErr } = await supabase
   .neq('requester_user_id', user.id)
   .or(`target_user_id.eq.${user.id},target_user_id.is.null`);
 
-if (swapErr) {
-  setStats({ disponiveis: 0 });
-} else {
-  const countDisponiveis = (swapRows ?? [])
+let countDisponiveis = 0;
+
+if (!swapErr) {
+  countDisponiveis = (swapRows ?? [])
     .map((row: any) => ({
       ...row,
       shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
     }))
-    .filter(r => r.shift?.date && r.shift?.period) // precisa date+period
-    .filter(r => !isExpiredShift(r.shift))          // ✅ agora expira por período
+    .filter(r => r.shift?.date && r.shift?.period)
+    .filter(r => !isExpiredShift(r.shift))
     .length;
-
-  setStats({ disponiveis: countDisponiveis });
 }
+
+// ✅ Badge "Disponibilidade" = quantos ANÚNCIOS (disponibilidades de outros médicos) nos próximos 30 dias
+const end30 = (() => {
+  const d = new Date(today + 'T00:00:00');
+  d.setDate(d.getDate() + 29);
+  return localYYYYMMDD(d);
+})();
+
+const { data: availAds30, error: availAds30Err } = await supabase
+  .from('availability')
+  .select('user_id, date') // só precisa disso pra deduplicar
+  .in('hospital_id', hospitalIds)
+  .neq('user_id', user.id)     // ✅ só anúncios de OUTROS médicos
+  .gte('date', today)
+  .lte('date', end30);
+
+// ✅ “anúncio” = (médico + dia) (não conta manhã/tarde/noite separado)
+const disponibilidade30d = availAds30Err
+  ? 0
+  : new Set((availAds30 ?? []).map((r: any) => `${r.user_id}|${r.date}`)).size;
+
+setStats({ disponiveis: countDisponiveis, disponibilidade30d });
       }
 
       setLoading(false);
@@ -198,11 +218,13 @@ if (swapErr) {
             onClick={() => router.push('/medico/calendario')}
           />
           <QuickCard 
-            title="Anunciar Disponibilidade" 
-            icon="✅" 
-            color="bg-emerald-50"
-            onClick={() => router.push('/medico/disponibilidade')}
-          />
+  title="Disponibilidade"
+  subtitle="Anuncie a sua • Veja plantonistas disponíveis"
+  icon="✅" 
+  color="bg-emerald-50"
+  badge={stats.disponibilidade30d > 0 ? `${stats.disponibilidade30d}` : undefined}
+  onClick={() => router.push('/medico/disponibilidade')}
+/>
         </div>
 
         <button 
@@ -237,11 +259,43 @@ if (swapErr) {
   );
 }
 
-function QuickCard({ title, icon, color, onClick }: { title: string, icon: string, color: string, onClick: () => void }) {
+function QuickCard({
+  title,
+  subtitle,
+  icon,
+  color,
+  onClick,
+  badge,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: string;
+  color: string;
+  onClick: () => void;
+  badge?: string;
+}) {
   return (
-    <button onClick={onClick} className={`${color} p-6 rounded-[32px] flex flex-col items-center gap-2 transition-all active:scale-95 shadow-sm`}>
+    <button
+      onClick={onClick}
+      className={`${color} relative p-6 rounded-[32px] flex flex-col items-center gap-1 transition-all active:scale-95 shadow-sm`}
+    >
+      {badge && (
+        <div className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full">
+          {badge}
+        </div>
+      )}
+
       <span className="text-3xl">{icon}</span>
-      <span className="text-[9px] font-black uppercase text-slate-700 text-center leading-tight">{title}</span>
+
+      <span className="text-[9px] font-black uppercase text-slate-700 text-center leading-tight">
+        {title}
+      </span>
+
+      {subtitle && (
+        <span className="text-[9px] text-slate-500 text-center leading-tight">
+          {subtitle}
+        </span>
+      )}
     </button>
   );
 }
