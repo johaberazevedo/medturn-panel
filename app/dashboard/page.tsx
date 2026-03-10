@@ -157,22 +157,22 @@ export default function DashboardPage() {
     setSwapLoading(true);
     try {
       const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const since = thirtyDaysAgo.toISOString();
-      
-      const { data, error } = await supabase
-        .from('shift_swap_requests')
-        .select(`
-          id, hospital_id, requester_user_id, from_shift_id, target_user_id, reason, status, created_at,
-          requester:requester_user_id(full_name, email),
-          target:target_user_id(full_name, email),
-          shift:from_shift_id(date, period, doctor_user_id, doctor:doctor_user_id(full_name, email))
-        `)
-        .eq('hospital_id', hId)
-        .eq('status', 'pendente')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(20);
+thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+const dateLimit = thirtyDaysAgo.toISOString().split('T')[0]; // ✅ Formato YYYY-MM-DD
+
+const { data, error } = await supabase
+  .from('shift_swap_requests')
+  .select(`
+    id, hospital_id, requester_user_id, from_shift_id, target_user_id, reason, status, created_at,
+    requester:requester_user_id(full_name, email),
+    target:target_user_id(full_name, email),
+    shift:from_shift_id!inner(date, period, doctor_user_id, doctor:doctor_user_id(full_name, email))
+  `) // ✅ Adicionado !inner para permitir o filtro na tabela relacionada
+  .eq('hospital_id', hId)
+  .eq('status', 'pendente')
+  .gte('shift.date', dateLimit) // ✅ Filtra pela DATA DO PLANTÃO (passado recente + futuro)
+  .order('created_at', { ascending: false })
+  .limit(20);
 
       if (!error) {
         const formattedSwaps = (data ?? []).map((item: any) => {

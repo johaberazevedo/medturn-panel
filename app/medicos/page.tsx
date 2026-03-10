@@ -190,27 +190,42 @@ export default function MedicosPage() {
   }
 
   async function handleChangeRole(doctorId: number, newRole: DoctorRow['role']) {
-  if (!hospitalId) return;
+    if (!hospitalId) return;
 
-  setError(null);
-  setActionMessage(null);
-  setSavingChangeId(doctorId);
+    setError(null);
+    setActionMessage(null);
+    setSavingChangeId(doctorId);
 
-  const { error: updateError } = await supabase
-    .from('hospital_users')
-    .update({ role: newRole })
-    .eq('id', doctorId);
+    // Sincronização automática: se for admin no texto, é admin no booleano
+    const isAdmin = newRole === 'admin';
 
-  if (updateError) {
-    setError('Não foi possível atualizar o papel do médico.');
+    const { data, error: updateError } = await supabase
+      .from('hospital_users')
+      .update({ 
+        role: newRole,
+        is_admin: isAdmin 
+      })
+      .eq('id', doctorId)
+      .select('id'); // Retorna o ID se o bouncer (RLS) permitir a escrita
+
+    if (updateError) {
+      console.error("Erro técnico:", updateError);
+      setError('Erro ao atualizar: ' + updateError.message);
+      setSavingChangeId(null);
+      return;
+    }
+
+    // Se data vier vazio, o banco ignorou o comando por falta de permissão (RLS)
+    if (!data || data.length === 0) {
+      setError('Ação bloqueada pelo banco. Verifique se você tem permissão neste hospital.');
+      setSavingChangeId(null);
+      return;
+    }
+
+    await reloadDoctors(hospitalId);
+    setActionMessage('Papel e permissões sincronizados com sucesso!');
     setSavingChangeId(null);
-    return;
   }
-
-  await reloadDoctors(hospitalId);
-  setActionMessage('Papel atualizado com sucesso.');
-  setSavingChangeId(null);
-}
 
   async function handleRemoveDoctor(doctorId: number) {
     if (!hospitalId) return;
