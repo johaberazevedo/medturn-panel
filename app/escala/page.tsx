@@ -88,18 +88,32 @@ function EscalaMensalContent() {
   const [loading, setLoading] = useState(true);
 
   // Estados para cópia de mês
-    const [copyTargetMonth, setCopyTargetMonth] = useState<string>('');
+      const [copyTargetMonth, setCopyTargetMonth] = useState<string>('');
   const [copyLoading, setCopyLoading] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   // =========================================================
   // ✅ PDF da Escala (mês atual)
   // =========================================================
-  const onGenerateScalePDF = async () => {
-    if (!hospitalId) return;
+    const onGenerateScalePDF = async () => {
+    if (!hospitalId || pdfLoading) return;
+
+    setPdfLoading(true);
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token;
+
+      if (!token) {
+        alert('Sessão expirada. Faça login novamente.');
+        return;
+      }
+
       const m1 = month + 1; // seu state month é 0..11
 
       const startDate = monthStartISO(year, month);
@@ -107,7 +121,10 @@ function EscalaMensalContent() {
 
       const res = await fetch('/api/report/scale-pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           hospitalId,
           hospitalName,
@@ -143,6 +160,8 @@ function EscalaMensalContent() {
     } catch (e) {
       console.error(e);
       alert('Falha ao gerar PDF da escala.');
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -251,11 +270,35 @@ if (!storedHospitalId) {
   return;
 }
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
+// 🔒 Só admin/coordenador pode acessar a página da escala
+const { data: membership, error: memErr } = await supabase
+  .from('hospital_users')
+  .select('role, is_admin')
+  .eq('user_id', user.id)
+  .eq('hospital_id', storedHospitalId)
+  .maybeSingle();
+
+if (memErr) {
+  console.error('Erro ao checar role:', memErr);
+  router.replace('/medico');
+  return;
+}
+
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin' ||
+  membership?.role === 'coordenador';
+
+if (!isAllowed) {
+  router.replace('/medico');
+  return;
+}
+
+const { data: profile } = await supabase
+  .from('users')
+  .select('full_name')
+  .eq('id', user.id)
+  .maybeSingle();
 
       setUserName(profile?.full_name ?? user.email ?? 'Usuário');
 
@@ -530,12 +573,17 @@ setLoading(false);
 
 <button
   onClick={onGenerateScalePDF}
-  disabled={!hospitalId}
+  disabled={!hospitalId || pdfLoading}
   className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
 >
-  Baixar PDF da escala
+  {pdfLoading ? 'Gerando PDF...' : 'Baixar PDF da escala'}
 </button>
-            </div>
+                        </div>
+            {pdfLoading && (
+              <p className="text-[11px] text-slate-500 md:ml-auto">
+                Preparando o PDF da escala. Isso pode levar alguns segundos.
+              </p>
+            )}
           </div>
 
           {copyError && (

@@ -15,6 +15,14 @@ type MembershipRow = {
   } | null;
 };
 
+type DoctorOption = {
+  user_id: string;
+  users: {
+    full_name: string | null;
+    email: string | null;
+  } | null;
+};
+
 type AvailabilityNotification = {
   hospital_id: string;
   user_id: string;
@@ -67,8 +75,17 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<AvailabilityNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
 
-  const [swapRequests, setSwapRequests] = useState<ShiftSwapNotification[]>([]);
+    const [swapRequests, setSwapRequests] = useState<ShiftSwapNotification[]>([]);
   const [swapLoading, setSwapLoading] = useState(false);
+
+  // 📣 Comunicação admin
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+  const [messageTitle, setMessageTitle] = useState('');
+  const [messageBody, setMessageBody] = useState('');
+  const [sendMode, setSendMode] = useState<'all' | 'single'>('single');
+  const [targetUserId, setTargetUserId] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
 
   // ✅ CORREÇÃO DE DATA: Garante que o fuso horário não altere o dia
   function formatDateBR(dateStr: string) {
@@ -121,13 +138,39 @@ export default function DashboardPage() {
     }
   }
 
-  function statusChipClass(status: string) {
+    function statusChipClass(status: string) {
     switch (status) {
       case 'approved': case 'aprovado': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'rejected': case 'rejeitado': case 'recusado': return 'bg-red-50 text-red-700 border-red-200';
       default: return 'bg-amber-50 text-amber-700 border-amber-200';
     }
   }
+
+  const loadDoctors = useCallback(async (hId: string) => {
+  const { data, error } = await supabase
+    .from('hospital_users')
+    .select('user_id, role, users(full_name, email)')
+    .eq('hospital_id', hId)
+    .in('role', ['doctor', 'admin']);
+
+  if (error) {
+    console.error('Erro ao carregar destinatários:', error);
+    return;
+  }
+
+  if (data) {
+    const formatted = data.map((item: any) => ({
+      user_id: item.user_id,
+      users: Array.isArray(item.users) ? item.users[0] : item.users,
+    }));
+
+    const unique = Array.from(
+      new Map(formatted.map((item) => [item.user_id, item])).values()
+    );
+
+    setDoctorOptions(unique as DoctorOption[]);
+  }
+}, []);
 
   const loadData = useCallback(async (hId: string) => {
     setNotifLoading(true);
@@ -279,11 +322,12 @@ useEffect(() => {
       window.localStorage.setItem(`activeHospitalId:${user.id}`, hosp.id);
     }
 
-    await loadData(hosp.id);
+        await loadData(hosp.id);
+    await loadDoctors(hosp.id);
     setLoading(false);
   }
   init();
-}, [router, loadData]);
+}, [router, loadData, loadDoctors]);
 
   useEffect(() => {
     if (!hospitalId) return;
@@ -295,6 +339,59 @@ useEffect(() => {
 
     return () => { supabase.removeChannel(channel); };
   }, [hospitalId, loadData]);
+
+  async function sendAdminMessage() {
+    if (!messageTitle.trim() || !messageBody.trim()) {
+      alert('Preencha título e mensagem.');
+      return;
+    }
+
+    if (sendMode === 'single' && !targetUserId) {
+      alert('Selecione um médico.');
+      return;
+    }
+
+    setSendingMessage(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const res = await fetch('/api/admin/send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          hospitalId,
+          title: messageTitle,
+          message: messageBody,
+          mode: sendMode,
+          targetUserId: sendMode === 'single' ? targetUserId : undefined,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Erro ao enviar aviso.');
+      }
+
+            alert(`Sucesso! Enviado para ${json.sent} usuário(s).`);
+
+      setMessageTitle('');
+      setMessageBody('');
+      setTargetUserId('');
+      setSendMode('single');
+      setShowMessageModal(false);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSendingMessage(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -323,7 +420,14 @@ useEffect(() => {
             <h1 className="text-xl font-semibold">{hospitalName}</h1>
             <p className="text-[11px] text-slate-500">Logado como: {adminName}</p>
           </div>
-          <div className="flex gap-2">
+                   <div className="flex gap-2">
+            <button
+              onClick={() => setShowMessageModal(true)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+            >
+              Enviar aviso
+            </button>
+
             <button 
               onClick={() => router.push('/escala')} 
               className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
@@ -398,6 +502,8 @@ useEffect(() => {
                 <p className="text-[11px] text-slate-500">Calcule turnos do mês e gerencie feriados.</p>
               </button>
             </div>
+
+                  
 
             <div className="bg-white border rounded-xl p-4">
                <h2 className="text-sm font-semibold mb-2">Próximos passos</h2>
@@ -491,7 +597,90 @@ useEffect(() => {
             </div>
           </section>
         </div>
-      </main>
+           </main>
+
+      {showMessageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-sm font-semibold">Enviar aviso</h2>
+                <p className="text-[11px] text-slate-500">
+                  Envie um aviso para um usuário específico ou para todos os usuários do hospital.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowMessageModal(false)}
+                className="text-sm text-slate-500 hover:text-slate-800"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              <input
+                type="text"
+                value={messageTitle}
+                onChange={(e) => setMessageTitle(e.target.value)}
+                placeholder="Título do aviso"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+
+              <textarea
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+                placeholder="Mensagem"
+                rows={5}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm resize-none"
+              />
+
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+  <select
+    value={sendMode}
+    onChange={(e) => setSendMode(e.target.value as 'all' | 'single')}
+    className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+  >
+    <option value="single">Enviar para um usuário</option>
+    <option value="all">Enviar para todos do hospital</option>
+  </select>
+
+  {sendMode === 'single' && (
+    <select
+      value={targetUserId}
+      onChange={(e) => setTargetUserId(e.target.value)}
+      className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+    >
+      <option value="">Selecione um usuário</option>
+      {doctorOptions.map((doc) => (
+        <option key={doc.user_id} value={doc.user_id}>
+          {doc.users?.full_name ?? doc.users?.email ?? doc.user_id}
+        </option>
+      ))}
+    </select>
+  )}
+</div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t px-5 py-4">
+              <button
+                onClick={() => setShowMessageModal(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={sendAdminMessage}
+                disabled={sendingMessage}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {sendingMessage ? 'Enviando...' : 'Enviar aviso'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

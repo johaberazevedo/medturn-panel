@@ -162,18 +162,20 @@ function buildHtml(opts: {
 
           const groups = PERIODS.map((p) => {
             const list = dayShifts
-              .filter((s) => s.period === p.key)
-              .sort((a, b) => {
-                // CH first
-                if (a.is_chief && !b.is_chief) return -1;
-                if (!a.is_chief && b.is_chief) return 1;
-                // has badge next
-                const aHas = !!a.badge;
-                const bHas = !!b.badge;
-                if (aHas && !bHas) return -1;
-                if (!aHas && bHas) return 1;
-                return 0;
-              });
+  .filter((s) => s.period === p.key)
+  .sort((a, b) => {
+    // 1) Chefe de plantão sempre primeiro
+    if (a.is_chief && !b.is_chief) return -1;
+    if (!a.is_chief && b.is_chief) return 1;
+
+    // 2) Depois, ordem alfabética por nome
+    const nameA = (a.name ?? '').trim();
+    const nameB = (b.name ?? '').trim();
+
+    return nameA.localeCompare(nameB, 'pt-BR', {
+      sensitivity: 'base',
+    });
+  });
 
             if (list.length === 0) return '';
 
