@@ -63,6 +63,12 @@ type ShiftSwapNotification = {
   } | null;
 };
 
+type OtherHospitalAlert = {
+  hospital_id: string;
+  hospital_name: string;
+  awaiting_confirmation_count: number;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -75,10 +81,17 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<AvailabilityNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
 
-    const [swapRequests, setSwapRequests] = useState<ShiftSwapNotification[]>([]);
+  const [swapRequests, setSwapRequests] = useState<ShiftSwapNotification[]>([]);
   const [swapLoading, setSwapLoading] = useState(false);
 
-  // 📣 Comunicação admin
+  const [otherHospitalAlerts, setOtherHospitalAlerts] = useState<OtherHospitalAlert[]>([]);
+const [otherAlertsLoading, setOtherAlertsLoading] = useState(false);
+
+const [conflictCount, setConflictCount] = useState(0);
+const [conflictTargetMonth, setConflictTargetMonth] = useState<number | null>(null);
+const [conflictTargetYear, setConflictTargetYear] = useState<number | null>(null);
+
+// 📣 Comunicação admin
   const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
   const [messageTitle, setMessageTitle] = useState('');
   const [messageBody, setMessageBody] = useState('');
@@ -172,82 +185,290 @@ export default function DashboardPage() {
   }
 }, []);
 
-  const loadData = useCallback(async (hId: string) => {
-    setNotifLoading(true);
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const since = thirtyDaysAgo.toISOString();
+  const loadOtherHospitalAlerts = useCallback(
+    async (currentHospitalId: string, currentUserId: string) => {
+      setOtherAlertsLoading(true);
 
-      const { data, error } = await supabase
-        .from('availability')
-        .select('hospital_id, user_id, date, period, created_at, users(full_name, email)')
-        .eq('hospital_id', hId)
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(20);
+      try {
+        const { data: memberships, error: membershipsError } = await supabase
+          .from('hospital_users')
+          .select('hospital_id, role, is_admin, hospitals(name)')
+          .eq('user_id', currentUserId);
 
-      if (!error) {
-        const formattedData = (data ?? []).map((item: any) => ({
-          ...item,
-          users: Array.isArray(item.users) ? item.users[0] : item.users
-        }));
-        setNotifications(formattedData as AvailabilityNotification[]);
-      }
-    } catch (e) { console.error(e); }
-    setNotifLoading(false);
+        if (membershipsError) {
+          console.error('Erro ao carregar hospitais do admin:', membershipsError);
+          return;
+        }
 
-    setSwapLoading(true);
-    try {
-      const thirtyDaysAgo = new Date();
-thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-const dateLimit = thirtyDaysAgo.toISOString().split('T')[0]; // ✅ Formato YYYY-MM-DD
+        const adminHospitals = (memberships ?? []).filter((m: any) => {
+          const isAllowed =
+            m?.is_admin === true ||
+            m?.role === 'admin' ||
+            m?.role === 'coordenador';
 
-const { data, error } = await supabase
-  .from('shift_swap_requests')
-  .select(`
-    id, hospital_id, requester_user_id, from_shift_id, target_user_id, reason, status, created_at,
-    requester:requester_user_id(full_name, email),
-    target:target_user_id(full_name, email),
-    shift:from_shift_id!inner(date, period, doctor_user_id, doctor:doctor_user_id(full_name, email))
-  `) // ✅ Adicionado !inner para permitir o filtro na tabela relacionada
-  .eq('hospital_id', hId)
-  .eq('status', 'pendente')
-  .gte('shift.date', dateLimit) // ✅ Filtra pela DATA DO PLANTÃO (passado recente + futuro)
-  .order('created_at', { ascending: false })
-  .limit(20);
-
-      if (!error) {
-        const formattedSwaps = (data ?? []).map((item: any) => {
-           let shiftObj = Array.isArray(item.shift) ? item.shift[0] : item.shift;
-           if (shiftObj && Array.isArray(shiftObj.doctor)) {
-             shiftObj = { ...shiftObj, doctor: shiftObj.doctor[0] };
-           }
-           return {
-             ...item,
-             requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
-             target: Array.isArray(item.target) ? item.target[0] : item.target,
-             shift: shiftObj
-           };
+          return isAllowed && m.hospital_id !== currentHospitalId;
         });
-        // 🔥 Prioriza solicitações com interessado aguardando confirmação
-const sortedSwaps = formattedSwaps.sort((a, b) => {
-  const aHasTarget = !!a.target_user_id;
-  const bHasTarget = !!b.target_user_id;
 
-  // quem tem interessado vem primeiro
-  if (aHasTarget && !bHasTarget) return -1;
-  if (!aHasTarget && bHasTarget) return 1;
+        if (adminHospitals.length === 0) {
+          setOtherHospitalAlerts([]);
+          return;
+        }
 
-  // se ambos iguais, mantém ordem por data (já vem desc, mas garantimos)
-  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const thirtyDaysAgo = new Date();
+thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
+
+        const alerts: OtherHospitalAlert[] = [];
+
+        for (const hosp of adminHospitals) {
+  const otherHospitalId = hosp.hospital_id;
+
+  const hospitalRel = hosp.hospitals as
+    | { name: string | null }
+    | { name: string | null }[]
+    | null
+    | undefined;
+
+  const otherHospitalName = Array.isArray(hospitalRel)
+    ? hospitalRel[0]?.name
+    : hospitalRel?.name;
+
+  const { count: awaitingConfirmationCount, error: awaitingError } = await supabase
+  .from('shift_swap_requests')
+  .select(
+    'id, shift:from_shift_id!inner(date)',
+    { count: 'exact', head: true }
+  )
+  .eq('hospital_id', otherHospitalId)
+  .eq('status', 'pendente')
+  .not('target_user_id', 'is', null)
+  .gte('shift.date', dateLimit);
+
+if (awaitingError) {
+  console.error('Erro ao contar trocas aguardando confirmação:', awaitingError);
+  continue;
+}
+
+const c = awaitingConfirmationCount ?? 0;
+
+if (c > 0) {
+  alerts.push({
+    hospital_id: otherHospitalId,
+    hospital_name: otherHospitalName ?? 'Hospital',
+    awaiting_confirmation_count: c,
+  });
+}
+}
+
+alerts.sort((a, b) => {
+  if (a.awaiting_confirmation_count !== b.awaiting_confirmation_count) {
+    return b.awaiting_confirmation_count - a.awaiting_confirmation_count;
+  }
+  return a.hospital_name.localeCompare(b.hospital_name, 'pt-BR', {
+    sensitivity: 'base',
+  });
 });
 
-setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
+        setOtherHospitalAlerts(alerts);
+      } catch (e) {
+        console.error('Erro ao carregar alertas de outros hospitais:', e);
+      } finally {
+        setOtherAlertsLoading(false);
       }
-    } catch (e) { console.error(e); }
+    },
+    []
+  );
+
+const loadConflictCount = useCallback(async (currentUserId: string) => {
+  try {
+    const { data: memberships, error: membershipsError } = await supabase
+      .from('hospital_users')
+      .select('hospital_id, role, is_admin')
+      .eq('user_id', currentUserId);
+
+    if (membershipsError) {
+      console.error('Erro ao carregar hospitais para conflitos:', membershipsError);
+      setConflictCount(0);
+      setConflictTargetMonth(null);
+      setConflictTargetYear(null);
+      return;
+    }
+
+    const adminHospitalIds = (memberships ?? [])
+      .filter((m: any) => {
+        return m?.is_admin === true || m?.role === 'admin' || m?.role === 'coordenador';
+      })
+      .map((m: any) => m.hospital_id);
+
+    if (adminHospitalIds.length === 0) {
+      setConflictCount(0);
+      setConflictTargetMonth(null);
+      setConflictTargetYear(null);
+      return;
+    }
+
+    const today = new Date();
+    const nextMonthYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    const nextMonth = today.getMonth() === 11 ? 1 : today.getMonth() + 2;
+
+    const startDate = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const nextNextMonthDate =
+      nextMonth === 12
+        ? new Date(nextMonthYear + 1, 0, 1)
+        : new Date(nextMonthYear, nextMonth, 1);
+
+    const endDate = `${nextNextMonthDate.getFullYear()}-${String(nextNextMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const { data: shiftRows, error: shiftError } = await supabase
+      .from('shifts')
+      .select(`
+        hospital_id,
+        date,
+        period,
+        doctor_user_id
+      `)
+      .in('hospital_id', adminHospitalIds)
+      .gte('date', startDate)
+      .lt('date', endDate)
+      .not('doctor_user_id', 'is', null)
+      .in('period', ['manha', 'tarde', 'noite']);
+
+    if (shiftError) {
+      console.error('Erro ao carregar shifts para conflitos:', shiftError);
+      setConflictCount(0);
+      setConflictTargetMonth(null);
+      setConflictTargetYear(null);
+      return;
+    }
+
+    const grouped = new Map<string, Set<string>>();
+
+    for (const row of shiftRows ?? []) {
+      const doctorId = (row as any).doctor_user_id;
+      const date = (row as any).date;
+      const period = (row as any).period;
+      const hospitalId = (row as any).hospital_id;
+
+      if (!doctorId || !date || !period || !hospitalId) continue;
+
+      const key = `${doctorId}__${date}__${period}`;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, new Set<string>());
+      }
+
+      grouped.get(key)!.add(hospitalId);
+    }
+
+    let totalConflicts = 0;
+
+    for (const [, hospitalSet] of grouped) {
+      if (hospitalSet.size > 1) {
+        totalConflicts += 1;
+      }
+    }
+
+    setConflictCount(totalConflicts);
+
+    if (totalConflicts > 0) {
+      setConflictTargetMonth(nextMonth);
+      setConflictTargetYear(nextMonthYear);
+    } else {
+      setConflictTargetMonth(null);
+      setConflictTargetYear(null);
+    }
+  } catch (e) {
+    console.error('Erro ao calcular conflitos do próximo mês:', e);
+    setConflictCount(0);
+    setConflictTargetMonth(null);
+    setConflictTargetYear(null);
+  }
+}, []);
+
+  const loadAvailabilityData = useCallback(async (hId: string) => {
+  setNotifLoading(true);
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const since = thirtyDaysAgo.toISOString();
+
+    const { data, error } = await supabase
+      .from('availability')
+      .select('hospital_id, user_id, date, period, created_at, users(full_name, email)')
+      .eq('hospital_id', hId)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (!error) {
+      const formattedData = (data ?? []).map((item: any) => ({
+        ...item,
+        users: Array.isArray(item.users) ? item.users[0] : item.users,
+      }));
+      setNotifications(formattedData as AvailabilityNotification[]);
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setNotifLoading(false);
+  }
+}, []);
+
+const loadSwapRequests = useCallback(async (hId: string) => {
+  setSwapLoading(true);
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('shift_swap_requests')
+      .select(`
+        id, hospital_id, requester_user_id, from_shift_id, target_user_id, reason, status, created_at,
+        requester:requester_user_id(full_name, email),
+        target:target_user_id(full_name, email),
+        shift:from_shift_id!inner(date, period, doctor_user_id, doctor:doctor_user_id(full_name, email))
+      `)
+      .eq('hospital_id', hId)
+      .eq('status', 'pendente')
+      .gte('shift.date', dateLimit)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (!error) {
+      const formattedSwaps = (data ?? []).map((item: any) => {
+        let shiftObj = Array.isArray(item.shift) ? item.shift[0] : item.shift;
+        if (shiftObj && Array.isArray(shiftObj.doctor)) {
+          shiftObj = { ...shiftObj, doctor: shiftObj.doctor[0] };
+        }
+
+        return {
+          ...item,
+          requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
+          target: Array.isArray(item.target) ? item.target[0] : item.target,
+          shift: shiftObj,
+        };
+      });
+
+      const sortedSwaps = formattedSwaps.sort((a, b) => {
+        const aHasTarget = !!a.target_user_id;
+        const bHasTarget = !!b.target_user_id;
+
+        if (aHasTarget && !bHasTarget) return -1;
+        if (!aHasTarget && bHasTarget) return 1;
+
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+
+      setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
     setSwapLoading(false);
-  }, []);
+  }
+}, []);
 
 useEffect(() => {
   async function init() {
@@ -322,23 +543,62 @@ useEffect(() => {
       window.localStorage.setItem(`activeHospitalId:${user.id}`, hosp.id);
     }
 
-        await loadData(hosp.id);
-    await loadDoctors(hosp.id);
-    setLoading(false);
+            await Promise.all([
+  loadAvailabilityData(hosp.id),
+  loadSwapRequests(hosp.id),
+  loadDoctors(hosp.id),
+]);
+
+setLoading(false);
+
+void loadOtherHospitalAlerts(hosp.id, user.id);
+void loadConflictCount(user.id);
   }
   init();
-}, [router, loadData, loadDoctors]);
+}, [
+  router,
+  loadAvailabilityData,
+  loadSwapRequests,
+  loadDoctors,
+  loadOtherHospitalAlerts,
+  loadConflictCount,
+]);
 
   useEffect(() => {
-    if (!hospitalId) return;
-    const channel = supabase
-      .channel('dashboard-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'availability', filter: `hospital_id=eq.${hospitalId}` }, () => loadData(hospitalId))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_swap_requests', filter: `hospital_id=eq.${hospitalId}` }, () => loadData(hospitalId))
-      .subscribe();
+  if (!hospitalId) return;
 
-    return () => { supabase.removeChannel(channel); };
-  }, [hospitalId, loadData]);
+  const channel = supabase
+    .channel(`dashboard-changes-${hospitalId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'availability',
+        filter: `hospital_id=eq.${hospitalId}`,
+      },
+      () => {
+        void loadAvailabilityData(hospitalId);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shift_swap_requests',
+        filter: `hospital_id=eq.${hospitalId}`,
+      },
+      () => {
+        void loadSwapRequests(hospitalId);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [hospitalId, loadAvailabilityData, loadSwapRequests]);
 
   async function sendAdminMessage() {
     if (!messageTitle.trim() || !messageBody.trim()) {
@@ -393,6 +653,30 @@ useEffect(() => {
     }
   }
 
+  async function openHospitalDashboard(targetHospitalId: string) {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`activeHospitalId:${user.id}`, targetHospitalId);
+      window.location.href = '/dashboard';
+      return;
+    }
+
+    router.push('/dashboard');
+  } catch (e) {
+    console.error('Erro ao trocar hospital ativo:', e);
+    alert('Não foi possível abrir o hospital selecionado.');
+  }
+}
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
@@ -444,12 +728,35 @@ useEffect(() => {
             </button>
             */}
 
-            <button 
-              onClick={() => router.push('/medicos')} 
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Gerenciar médicos
-            </button>
+            <button
+  onClick={() => {
+  if (conflictTargetMonth && conflictTargetYear) {
+    router.push(`/conflitos?month=${conflictTargetMonth}&year=${conflictTargetYear}`);
+    return;
+  }
+
+  router.push('/conflitos');
+}}
+  className={`text-xs px-3 py-1.5 rounded-lg border hover:bg-slate-50 flex items-center gap-2 ${
+    conflictCount > 0
+      ? 'border-amber-300 bg-amber-50 text-amber-800'
+      : 'border-slate-300'
+  }`}
+>
+  <span>Ver conflitos</span>
+  {conflictCount > 0 && (
+    <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+      {conflictCount}
+    </span>
+  )}
+</button>
+
+<button 
+  onClick={() => router.push('/medicos')} 
+  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+>
+  Gerenciar médicos
+</button>
 
             <button
               onClick={() => router.push('/relatorio')}
@@ -517,85 +824,169 @@ useEffect(() => {
           </section>
 
           <section className="space-y-3">
-            {/* Feed de Notificações permanece igual */}
-            <div className="bg-white border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold">Disponibilidades e solicitações</h2>
-                <button onClick={() => loadData(hospitalId!)} className="text-[10px] text-slate-500 hover:text-slate-800">
-                  Atualizar
-                </button>
+  <div className="bg-white border rounded-xl p-4">
+    <div className="flex items-center justify-between mb-2">
+      <h2 className="text-sm font-semibold">Disponibilidades e solicitações</h2>
+      <button
+        onClick={() => {
+          void loadAvailabilityData(hospitalId!);
+          void loadSwapRequests(hospitalId!);
+        }}
+        className="text-[10px] text-slate-500 hover:text-slate-800"
+      >
+        Atualizar
+      </button>
+    </div>
+
+    <p className="text-[11px] text-slate-500 mb-1">Últimos anúncios de disponibilidade (30 dias).</p>
+    {notifLoading && <p className="text-[11px] text-slate-500 mb-2">Carregando...</p>}
+
+    {!notifLoading && notifications.length === 0 && (
+      <p className="text-[11px] text-slate-400 mb-2">Nenhum anúncio recente.</p>
+    )}
+
+    {!notifLoading && notifications.length > 0 && (
+      <ul className="space-y-2 max-h-64 overflow-auto pr-1 mb-4">
+        {notifications.map((n) => (
+          <li
+            key={`${n.user_id}-${n.date}-${n.period}-${n.created_at}`}
+            className="border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50"
+          >
+            <div className="flex justify-between items-center">
+              <span className="font-medium truncate">
+                {n.users?.full_name ?? n.users?.email ?? 'Médico'}
+              </span>
+              <span className="text-[10px] text-slate-500">{formatDateTimeBR(n.created_at)}</span>
+            </div>
+
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-slate-600">
+                Disp. para <strong>{formatDateBR(n.date)}</strong>
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center mt-1">
+              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + periodChipClass(n.period)}>
+                {periodLabel(n.period)}
+              </span>
+              <button
+                onClick={() => router.push(`/escala/editar?date=${n.date}`)}
+                className="text-[10px] text-slate-600 underline"
+              >
+                Ir para escala
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    <h3 className="text-[11px] font-semibold text-slate-700 mt-2 mb-1">Solicitações de troca</h3>
+    {swapLoading && <p className="text-[11px] text-slate-500">Carregando...</p>}
+    {!swapLoading && swapRequests.length === 0 && (
+      <p className="text-[11px] text-slate-400">Nenhuma solicitação pendente.</p>
+    )}
+
+    {!swapLoading && swapRequests.length > 0 && (
+      <ul className="space-y-2 max-h-64 overflow-auto pr-1">
+        {swapRequests.map((r) => (
+          <li
+            key={r.id}
+            className={`border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50 transition-all ${
+              r.target_user_id ? 'border-emerald-400 shadow-sm shadow-emerald-100' : ''
+            }`}
+          >
+            <div className="flex justify-between items-center">
+              <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
+              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + statusChipClass(r.status)}>
+                {statusLabel(r.status)}
+              </span>
+            </div>
+
+            <div className="text-slate-600 mt-1">
+              {r.target_user_id ? (
+                <p>
+                  <span className="text-emerald-600 font-bold">
+                    ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
+                  </span>{' '}
+                  a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]} —{' '}
+                  <span className="text-[10px] text-slate-500">clique para confirmar</span>
+                </p>
+              ) : (
+                <p>
+                  Solicitação de cobertura:{' '}
+                  <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
+                </p>
+              )}
+
+              <div className="text-[10px] text-slate-400 mt-1">
+                📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-1">
+              <button
+                onClick={() => router.push(`/solicitacoes/${r.id}`)}
+                className="text-[10px] text-slate-600 underline"
+              >
+                Ver detalhes
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+
+  <div className="bg-white border rounded-xl p-4">
+    <div className="flex items-center justify-between mb-2">
+      <h2 className="text-sm font-semibold">Pendências em outros hospitais</h2>
+    </div>
+
+    <p className="text-[11px] text-slate-500 mb-2">
+      Mostra trocas já aceitas por outro médico e que ainda aguardam sua confirmação.
+    </p>
+
+    {otherAlertsLoading && (
+      <p className="text-[11px] text-slate-500">Carregando...</p>
+    )}
+
+    {!otherAlertsLoading && otherHospitalAlerts.length === 0 && (
+      <p className="text-[11px] text-slate-400">
+        Nenhuma pendência encontrada nos outros hospitais.
+      </p>
+    )}
+
+    {!otherAlertsLoading && otherHospitalAlerts.length > 0 && (
+      <ul className="space-y-2">
+        {otherHospitalAlerts.map((item) => (
+          <li
+            key={item.hospital_id}
+            className="border border-emerald-300 rounded-lg px-3 py-2 text-[11px] bg-slate-50"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="font-medium">{item.hospital_name}</p>
+                <div className="mt-1 text-slate-600">
+                  <p className="font-semibold text-emerald-700">
+                    {item.awaiting_confirmation_count} aguardando confirmação
+                  </p>
+                </div>
               </div>
 
-              <p className="text-[11px] text-slate-500 mb-1">Últimos anúncios de disponibilidade (30 dias).</p>
-              {notifLoading && <p className="text-[11px] text-slate-500 mb-2">Carregando...</p>}
-              
-              {!notifLoading && notifications.length === 0 && (
-                <p className="text-[11px] text-slate-400 mb-2">Nenhum anúncio recente.</p>
-              )}
-              
-              {!notifLoading && notifications.length > 0 && (
-                <ul className="space-y-2 max-h-64 overflow-auto pr-1 mb-4">
-                  {notifications.map((n) => (
-                    <li key={`${n.user_id}-${n.date}-${n.period}-${n.created_at}`} className="border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50">
-                      <div className="flex justify-between items-center">
-                         <span className="font-medium truncate">{n.users?.full_name ?? n.users?.email ?? 'Médico'}</span>
-                         <span className="text-[10px] text-slate-500">{formatDateTimeBR(n.created_at)}</span>
-                      </div>
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="text-slate-600">Disp. para <strong>{formatDateBR(n.date)}</strong></span>
-                      </div>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + periodChipClass(n.period)}>{periodLabel(n.period)}</span>
-                         <button onClick={() => router.push(`/escala/editar?date=${n.date}`)} className="text-[10px] text-slate-600 underline">Ir para escala</button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <h3 className="text-[11px] font-semibold text-slate-700 mt-2 mb-1">Solicitações de troca</h3>
-              {swapLoading && <p className="text-[11px] text-slate-500">Carregando...</p>}
-              {!swapLoading && swapRequests.length === 0 && <p className="text-[11px] text-slate-400">Nenhuma solicitação pendente.</p>}
-              {!swapLoading && swapRequests.length > 0 && (
-                <ul className="space-y-2 max-h-64 overflow-auto pr-1">
-                  {swapRequests.map((r) => (
-                    <li
-  key={r.id}
-  className={`border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50 transition-all
-    ${r.target_user_id ? 'border-emerald-400 shadow-sm shadow-emerald-100' : ''}
-  `}
->
-                        <div className="flex justify-between items-center">
-                           <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
-                           <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + statusChipClass(r.status)}>{statusLabel(r.status)}</span>
-                        </div>
-                        <div className="text-slate-600 mt-1">
-  {r.target_user_id ? (
-    <p>
-      <span className="text-emerald-600 font-bold">
-        ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
-      </span>{' '}
-      a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]}
-      {' '}— <span className="text-[10px] text-slate-500">clique para confirmar</span>
-    </p>
-  ) : (
-    <p>
-      Solicitação de cobertura: <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
-    </p>
-  )}
-  <div className="text-[10px] text-slate-400 mt-1">
-    📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
-  </div>
-</div>
-                        <div className="flex justify-end mt-1">
-                             <button onClick={() => router.push(`/solicitacoes/${r.id}`)} className="text-[10px] text-slate-600 underline">Ver detalhes</button>
-                        </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <button
+                onClick={() => openHospitalDashboard(item.hospital_id)}
+                className="text-[10px] text-slate-600 underline whitespace-nowrap"
+              >
+                Abrir hospital
+              </button>
             </div>
-          </section>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</section>
         </div>
            </main>
 
