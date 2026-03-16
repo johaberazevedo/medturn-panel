@@ -48,7 +48,6 @@ function isExpiredShift(shift: {
 }
 
 const WEB_PUSH_PILOT_USER_IDS = [
-  'd6309a52-3678-424f-b232-c4f42bcb7785',
   '92ccb1ad-adf2-4c7e-aba0-ba0e397a45af',
   '6b0e88ec-f92b-4662-af77-70d2210dca9f',
   'ef659b9d-0b42-47fa-b429-856701556b39',
