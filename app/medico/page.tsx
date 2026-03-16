@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import OneSignalInit from '../components/OneSignalInit';
+import EnableWebPushButton from '../components/EnableWebPushButton';
 
 type NextShift = {
   date: string;
@@ -44,18 +46,36 @@ function isExpiredShift(shift: {
 
   return minutes >= cutoff[shift.period];
 }
+
+const WEB_PUSH_PILOT_USER_IDS = [
+  '4c234e20-197f-4e4e-a815-8bc6838de65f',
+  '92ccb1ad-adf2-4c7e-aba0-ba0e397a45af',
+  '6b0e88ec-f92b-4662-af77-70d2210dca9f',
+  'ef659b9d-0b42-47fa-b429-856701556b39',
+  '92afc0ad-6556-48e4-8aa6-628e192ef4a2',
+];
+
+function isWebPushPilot(userId?: string | null) {
+  if (!userId) return false;
+  return WEB_PUSH_PILOT_USER_IDS.includes(userId);
+}
 export default function MedicoHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState('Doutor(a)');
-  const [stats, setStats] = useState({ disponiveis: 0, disponibilidade30d: 0 });
-  const [nextShift, setNextShift] = useState<NextShift | null>(null);
-  const [canCheckin, setCanCheckin] = useState(false); // ✅ Novo estado para o botão
+const [userName, setUserName] = useState('Doutor(a)');
+const [stats, setStats] = useState({ disponiveis: 0, disponibilidade30d: 0 });
+const [nextShift, setNextShift] = useState<NextShift | null>(null);
+const [canCheckin, setCanCheckin] = useState(false);
+const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const [webPushEnabled, setWebPushEnabled] = useState(false);
 
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
+
+setCurrentUserId(user.id);
+setWebPushEnabled(isWebPushPilot(user.id));
 
       const { data: profile } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
       if (profile?.full_name) setUserName(profile.full_name.split(' ')[0]);
@@ -156,6 +176,12 @@ setStats({ disponiveis: countDisponiveis, disponibilidade30d });
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-400">MedTurn carregando...</div>;
 
   return (
+  <>
+    <OneSignalInit
+      enabled={webPushEnabled}
+      externalId={currentUserId}
+    />
+
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white px-6 pt-8 pb-6 rounded-b-[40px] shadow-sm">
         <div className="flex justify-between items-start">
@@ -192,6 +218,7 @@ setStats({ disponiveis: countDisponiveis, disponibilidade30d });
 
       <main className="p-6 space-y-4">
         
+{webPushEnabled && <EnableWebPushButton />}
         {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
         {canCheckin && (
           <button 
@@ -245,17 +272,25 @@ setStats({ disponiveis: countDisponiveis, disponibilidade30d });
           )}
         </button>
 
-        <button 
-          onClick={async () => {
-            await supabase.auth.signOut();
-            router.push('/login');
-          }}
-          className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors mt-4"
-        >
-          Sair da Conta
-        </button>
+        <button
+  onClick={async () => {
+    if (typeof window !== 'undefined') {
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(async function (OneSignal) {
+  await OneSignal.logout();
+});
+    }
+
+    await supabase.auth.signOut();
+    router.push('/login');
+  }}
+  className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors mt-4"
+>
+  Sair da Conta
+</button>
       </main>
-    </div>
+        </div>
+  </>
   );
 }
 
