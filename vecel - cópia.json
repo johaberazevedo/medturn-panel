@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "app/api/report/scale-pdf/route.ts": {
-      "maxDuration": 60
-    }
-  }
-}

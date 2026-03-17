@@ -765,6 +765,13 @@ void loadConflictCount(user.id);
               Relatório de pagamento
             </button>
 
+<button
+  onClick={() => router.push('/dashboard/trocas-log')}
+  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+>
+  Histórico de trocas
+</button>
+
             <button
               onClick={() => router.push('/selecionar-hospital')}
               className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
@@ -785,30 +792,32 @@ void loadConflictCount(user.id);
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="lg:col-span-2 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button 
-                onClick={() => router.push('/escala')} 
-                className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-              >
-                <h2 className="text-sm font-semibold mb-1">Escala mensal</h2>
-                <p className="text-[11px] text-slate-500">Visualize e edite a escala de plantões.</p>
-              </button>
+  <button 
+    onClick={() => router.push('/escala')} 
+    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
+  >
+    <h2 className="text-sm font-semibold mb-1">Escala mensal</h2>
+    <p className="text-[11px] text-slate-500">Visualize e edite a escala de plantões.</p>
+  </button>
 
-              <button 
-                onClick={() => router.push('/medicos')} 
-                className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-              >
-                <h2 className="text-sm font-semibold mb-1">Médicos do hospital</h2>
-                <p className="text-[11px] text-slate-500">Gerencie o quadro de profissionais.</p>
-              </button>
+  <button
+    onClick={() => router.push('/relatorio')}
+    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
+  >
+    <h2 className="text-sm font-semibold mb-1">Relatório de pagamento</h2>
+    <p className="text-[11px] text-slate-500">Calcule turnos do mês e gerencie feriados.</p>
+  </button>
 
-              <button
-                onClick={() => router.push('/relatorio')}
-                className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-              >
-                <h2 className="text-sm font-semibold mb-1">Relatório de pagamento</h2>
-                <p className="text-[11px] text-slate-500">Calcule turnos do mês e gerencie feriados.</p>
-              </button>
-            </div>
+  <button
+    onClick={() => router.push('/dashboard/trocas-log')}
+    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
+  >
+    <h2 className="text-sm font-semibold mb-1">Histórico de trocas</h2>
+    <p className="text-[11px] text-slate-500">
+      Consulte trocas realizadas, pendentes e não realizadas por mês.
+    </p>
+  </button>
+</div>
 
                   
 

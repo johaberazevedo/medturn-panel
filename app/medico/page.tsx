@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '../components/OneSignalInit';
 import EnableWebPushButton from '../components/EnableWebPushButton';
+import InstallMedTurnCard from '../components/InstallMedTurnCard';
+import PilotManifestLink from '../components/PilotManifestLink';
 
 type NextShift = {
   date: string;
@@ -177,6 +179,8 @@ setStats({ disponiveis: countDisponiveis, disponibilidade30d });
 
   return (
   <>
+<PilotManifestLink enabled={webPushEnabled} />
+
     <OneSignalInit
       enabled={webPushEnabled}
       externalId={currentUserId}
@@ -219,6 +223,8 @@ setStats({ disponiveis: countDisponiveis, disponibilidade30d });
       <main className="p-6 space-y-4">
         
 {webPushEnabled && <EnableWebPushButton />}
+
+{webPushEnabled && <InstallMedTurnCard />}
         {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
         {canCheckin && (
           <button 

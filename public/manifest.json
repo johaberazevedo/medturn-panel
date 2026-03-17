@@ -1,0 +1,17 @@
+{
+  "name": "MedTurn - Gestão de Plantões",
+  "short_name": "MedTurn",
+  "description": "Gerenciamento inteligente de escalas e trocas de plantões médicos.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0ea5e9",
+  "icons": [
+    {
+      "src": "/Logo_medturn-tpr.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
