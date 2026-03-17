@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -171,7 +171,7 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
   }
 
   // --- CARREGAMENTO DE DADOS GERAIS (MÊS) ---
-  async function loadMonthData(hIds: string[], uId: string, y: number, m: number) {
+  const loadMonthData = useCallback(async (hIds: string[], uId: string, y: number, m: number) => {
   if (!hIds.length) {
     setMonthAvailability({});
     setMonthShifts({});
@@ -186,11 +186,12 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
   // 1) Disponibilidade (todas)
   const { data: availData } = await supabase
     .from('availability')
-    .select('date, period, hospital_id')
-    .in('hospital_id', hIds)
-    .eq('user_id', uId)
-    .gte('date', monthStart)
-    .lte('date', monthEnd);
+.select('date, period, hospital_id')
+.in('hospital_id', hIds)
+.eq('user_id', uId)
+.is('expires_at', null)
+.gte('date', monthStart)
+.lte('date', monthEnd);
 
   const availabilityMap: MonthAvailability = {};
   (availData ?? []).forEach((row: any) => {
@@ -268,19 +269,19 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
       requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
     });
   });
-  setMonthOpportunities(oppMap);
-}
+    setMonthOpportunities(oppMap);
+}, []);
 
   // --- CARREGAR DETALHES DO DIA (EQUIPE COMPLETA) ---
-  async function loadDayTeam(hId: string, date: string) {
+  const loadDayTeam = useCallback(async (hId: string, date: string) => {
   setLoadingDayDetails(true);
 
   const { data, error } = await supabase
-  .from('shifts')
-  .select('id, date, period, doctor_user_id, is_chief, badge, users(full_name)') // PATCH
-  .eq('hospital_id', hId)
-  .eq('date', date)
-  .order('period');
+    .from('shifts')
+    .select('id, date, period, doctor_user_id, is_chief, badge, users(full_name)')
+    .eq('hospital_id', hId)
+    .eq('date', date)
+    .order('period');
 
   if (!error && data) {
     const formatted = data.map((d: any) => ({
@@ -294,7 +295,7 @@ const [loadingDayDetails, setLoadingDayDetails] = useState(false);
   }
 
   setLoadingDayDetails(false);
-}
+}, []);
 
   // --- AO CLICAR NO DIA ---
   function handleDayClick(date: string) {
@@ -524,7 +525,71 @@ await loadMonthData(list.map(h => h.id), user.id, year, month);
 setLoading(false);
     }
     init();
-  }, [router]); 
+  }, [router, loadMonthData]); 
+
+useEffect(() => {
+  if (!userId || hospitals.length === 0) return;
+
+  const hospitalIds = hospitals.map(h => h.id);
+
+  const refreshAll = async () => {
+    await loadMonthData(hospitalIds, userId, year, month);
+
+    if (selectedDate && activeDayHospitalId) {
+      await loadDayTeam(activeDayHospitalId, selectedDate);
+    }
+  };
+
+  const channel = supabase
+    .channel(`medico-calendario-${userId}-${year}-${month}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shifts',
+      },
+      async () => {
+        await refreshAll();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'availability',
+      },
+      async () => {
+  await refreshAll();
+}
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shift_swap_requests',
+      },
+      async () => {
+        await refreshAll();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [
+  userId,
+  hospitals,
+  year,
+  month,
+  selectedDate,
+  activeDayHospitalId,
+  loadMonthData,
+  loadDayTeam,
+]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-slate-600">Carregando...</div>;
 

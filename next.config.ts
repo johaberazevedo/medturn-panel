@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
+import withPWA from '@ducanh2912/next-pwa';
 
 const nextConfig: NextConfig = {
-  // ✅ a chave é o PATH da rota (não o arquivo)
   outputFileTracingIncludes: {
     '/api/report/scale-pdf': [
       'node_modules/@sparticuz/chromium/**',
@@ -9,4 +9,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA({
+  dest: 'public',
+  register: true,
+  disable: process.env.NODE_ENV === 'development',
+})(nextConfig);

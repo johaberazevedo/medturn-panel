@@ -89,11 +89,12 @@ function getRange(date: string, mode: ViewMode) {
   const loadHospitalData = useCallback(async (hId: string, uId: string, date: string) => {
   // ✅ disponibilidade do próprio médico continua sendo APENAS do dia selecionado
   const { data: avail } = await supabase
-    .from('availability')
-    .select('period')
-    .eq('hospital_id', hId)
-    .eq('user_id', uId)
-    .eq('date', date);
+  .from('availability')
+  .select('period')
+  .eq('hospital_id', hId)
+  .eq('user_id', uId)
+  .eq('date', date)
+  .is('expires_at', null);
 
   setPeriods((avail ?? []).map((r: any) => r.period as AvailabilityPeriod));
 
@@ -116,12 +117,13 @@ function getRange(date: string, mode: ViewMode) {
     const { start, end } = getRange(date, mode);
 
     const { data, error } = await supabase
-      .from('availability')
-      .select('user_id, period, users(full_name), date')
-      .eq('hospital_id', hId)
-      .gte('date', start)
-      .lte('date', end)
-      .neq('user_id', uId);
+  .from('availability')
+  .select('user_id, period, users(full_name), date')
+  .eq('hospital_id', hId)
+  .is('expires_at', null)
+  .gte('date', start)
+  .lte('date', end)
+  .neq('user_id', uId);
 
     if (error) throw error;
 
@@ -187,6 +189,17 @@ const loadMyRangeShifts = useCallback(async (hId: string, uId: string, date: str
   }
 }, []);
 
+const refreshDisponibilidade = useCallback(async (
+  hId: string,
+  uId: string,
+  date: string,
+  mode: ViewMode
+) => {
+  await loadHospitalData(hId, uId, date);
+  await loadColleaguesAvailability(hId, uId, date, mode);
+  await loadMyRangeShifts(hId, uId, date, mode);
+}, [loadHospitalData, loadColleaguesAvailability, loadMyRangeShifts]);
+
   // --- INITIALIZATION ---
   useEffect(() => {
     async function init() {
@@ -215,16 +228,12 @@ const loadMyRangeShifts = useCallback(async (hId: string, uId: string, date: str
         const initialDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
         setDateStr(initialDate);
 
-        await loadHospitalData(initialHosp.id, user.id, initialDate);
-await loadColleaguesAvailability(initialHosp.id, user.id, initialDate, viewMode);
-
-// ✅ NOVO: carregar meus plantões do range do toggle
-await loadMyRangeShifts(initialHosp.id, user.id, initialDate, viewMode);
+        await refreshDisponibilidade(initialHosp.id, user.id, initialDate, viewMode);
       }
       setLoading(false);
     }
     init();
-  }, [router, searchParams, loadHospitalData, loadColleaguesAvailability, loadMyRangeShifts]);
+  }, [router, searchParams, refreshDisponibilidade]);
 
   useEffect(() => {
   if (loading) return; // ✅ evita duplicar no primeiro render
@@ -243,6 +252,67 @@ useEffect(() => {
     loadMyRangeShifts(hospitalId, userId, dateStr, viewMode);
   }
 }, [loading, hospitalId, dateStr, userId, viewMode, loadColleaguesAvailability, loadMyRangeShifts]);
+
+useEffect(() => {
+  if (loading) return;
+  if (!hospitalId || !userId || !dateStr) return;
+
+  const refresh = async () => {
+    await refreshDisponibilidade(hospitalId, userId, dateStr, viewMode);
+  };
+
+  const channel = supabase
+    .channel(`medico-disponibilidade-${userId}-${hospitalId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'availability',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shifts',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shift_swap_requests',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'hospital_users',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [loading, hospitalId, userId, dateStr, viewMode, refreshDisponibilidade]);
 
   // --- HANDLERS ---
 

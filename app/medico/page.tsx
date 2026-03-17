@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '../components/OneSignalInit';
@@ -71,102 +71,200 @@ const [canCheckin, setCanCheckin] = useState(false);
 const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 const [webPushEnabled, setWebPushEnabled] = useState(false);
 
-  useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+const loadHomeData = useCallback(async (userId: string) => {
+  const { data: profile } = await supabase
+    .from('users')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle();
 
-setCurrentUserId(user.id);
-setWebPushEnabled(isWebPushPilot(user.id));
+  if (profile?.full_name) {
+    setUserName(profile.full_name.split(' ')[0]);
+  }
 
-      const { data: profile } = await supabase.from('users').select('full_name').eq('id', user.id).maybeSingle();
-      if (profile?.full_name) setUserName(profile.full_name.split(' ')[0]);
+  const { data: userHosp } = await supabase
+    .from('hospital_users')
+    .select('hospital_id')
+    .eq('user_id', userId);
 
-      const { data: userHosp } = await supabase.from('hospital_users').select('hospital_id').eq('user_id', user.id);
-      const hospitalIds = userHosp?.map(h => h.hospital_id) || [];
+  const hospitalIds = userHosp?.map(h => h.hospital_id) || [];
 
-      if (hospitalIds.length > 0) {
-  const today = localYYYYMMDD(); // ✅ fuso do celular (helper do topo)
+  if (hospitalIds.length === 0) {
+    setNextShift(null);
+    setCanCheckin(false);
+    setStats({ disponiveis: 0, disponibilidade30d: 0 });
+    return;
+  }
 
-// 1. Busca o próximo plantão para o card do header
-const { data: shifts } = await supabase
-  .from('shifts')
-  .select('date, period, hospitals(name)')
-  .eq('doctor_user_id', user.id)
-  .gte('date', today) // ✅ fuso local
-  .order('date', { ascending: true })
-  .limit(1)
-  .maybeSingle();
+  const today = localYYYYMMDD();
 
-if (shifts) {
-  setNextShift({
-    date: shifts.date,
-    period: shifts.period,
-    hospital_name: (shifts.hospitals as any)?.name || 'Hospital',
-  });
-}
+  const { data: shifts } = await supabase
+    .from('shifts')
+    .select('date, period, hospitals(name)')
+    .eq('doctor_user_id', userId)
+    .gte('date', today)
+    .order('date', { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-// 2. ✅ LÓGICA DO BOTÃO: Verifica se tem plantão HOJE com check-in LIGADO
-const { data: todayShifts } = await supabase
-  .from('shifts')
-  .select('id, hospitals(is_checkin_enabled)')
-  .eq('doctor_user_id', user.id)
-  .eq('date', today); // ✅ fuso local
+  if (shifts) {
+    setNextShift({
+      date: shifts.date,
+      period: shifts.period,
+      hospital_name: (shifts.hospitals as any)?.name || 'Hospital',
+    });
+  } else {
+    setNextShift(null);
+  }
 
-const hasEnabledCheckin = todayShifts?.some(
-  s => (s.hospitals as any)?.is_checkin_enabled === true
-);
-setCanCheckin(!!hasEnabledCheckin);
+  const { data: todayShifts } = await supabase
+    .from('shifts')
+    .select('id, hospitals(is_checkin_enabled)')
+    .eq('doctor_user_id', userId)
+    .eq('date', today);
 
-// 3. ✅ Badge "Plantões Disponíveis" batendo com a regra por período do Marketplace
-const { data: swapRows, error: swapErr } = await supabase
-  .from('shift_swap_requests')
-  .select('id, target_user_id, shift:from_shift_id(date, period)')
-  .in('hospital_id', hospitalIds)
-  .eq('status', 'pendente')
-  .neq('requester_user_id', user.id)
-  .or(`target_user_id.eq.${user.id},target_user_id.is.null`);
+  const hasEnabledCheckin = todayShifts?.some(
+    s => (s.hospitals as any)?.is_checkin_enabled === true
+  );
+  setCanCheckin(!!hasEnabledCheckin);
 
-let countDisponiveis = 0;
+  const { data: swapRows, error: swapErr } = await supabase
+    .from('shift_swap_requests')
+    .select('id, target_user_id, shift:from_shift_id(date, period)')
+    .in('hospital_id', hospitalIds)
+    .eq('status', 'pendente')
+    .neq('requester_user_id', userId)
+    .or(`target_user_id.eq.${userId},target_user_id.is.null`);
 
-if (!swapErr) {
-  countDisponiveis = (swapRows ?? [])
-    .map((row: any) => ({
-      ...row,
-      shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
-    }))
-    .filter(r => r.shift?.date && r.shift?.period)
-    .filter(r => !isExpiredShift(r.shift))
-    .length;
-}
+  let countDisponiveis = 0;
 
-// ✅ Badge "Disponibilidade" = quantos ANÚNCIOS (disponibilidades de outros médicos) nos próximos 30 dias
-const end30 = (() => {
-  const d = new Date(today + 'T00:00:00');
-  d.setDate(d.getDate() + 29);
-  return localYYYYMMDD(d);
-})();
+  if (!swapErr) {
+    countDisponiveis = (swapRows ?? [])
+      .map((row: any) => ({
+        ...row,
+        shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
+      }))
+      .filter(r => r.shift?.date && r.shift?.period)
+      .filter(r => !isExpiredShift(r.shift))
+      .length;
+  }
 
-const { data: availAds30, error: availAds30Err } = await supabase
+  const end30 = (() => {
+    const d = new Date(today + 'T00:00:00');
+    d.setDate(d.getDate() + 29);
+    return localYYYYMMDD(d);
+  })();
+
+  const { data: availAds30, error: availAds30Err } = await supabase
   .from('availability')
-  .select('user_id, date') // só precisa disso pra deduplicar
+  .select('user_id, date')
   .in('hospital_id', hospitalIds)
-  .neq('user_id', user.id)     // ✅ só anúncios de OUTROS médicos
+  .neq('user_id', userId)
+  .is('expires_at', null)
   .gte('date', today)
   .lte('date', end30);
 
-// ✅ “anúncio” = (médico + dia) (não conta manhã/tarde/noite separado)
-const disponibilidade30d = availAds30Err
-  ? 0
-  : new Set((availAds30 ?? []).map((r: any) => `${r.user_id}|${r.date}`)).size;
+  const disponibilidade30d = availAds30Err
+    ? 0
+    : new Set((availAds30 ?? []).map((r: any) => `${r.user_id}|${r.date}`)).size;
 
-setStats({ disponiveis: countDisponiveis, disponibilidade30d });
-      }
+  setStats({
+    disponiveis: countDisponiveis,
+    disponibilidade30d,
+  });
+}, []);
 
-      setLoading(false);
+  useEffect(() => {
+  async function init() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push('/login');
+      return;
     }
-    init();
-  }, [router]);
+
+    setCurrentUserId(user.id);
+    setWebPushEnabled(isWebPushPilot(user.id));
+
+    await loadHomeData(user.id);
+    setLoading(false);
+  }
+
+  init();
+}, [router, loadHomeData]);
+
+useEffect(() => {
+  if (!currentUserId) return;
+
+  const refresh = async () => {
+    await loadHomeData(currentUserId);
+  };
+
+  const channel = supabase
+    .channel(`medico-home-${currentUserId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shifts',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'shift_swap_requests',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'availability',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'hospitals',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'hospital_users',
+      },
+      async () => {
+        await refresh();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [currentUserId, loadHomeData]);
 
   function formatNextDate(dateStr: string) {
     const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
