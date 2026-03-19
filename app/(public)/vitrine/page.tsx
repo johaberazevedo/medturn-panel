@@ -455,15 +455,15 @@ export default function MedTurnVitrine() {
       Domínio total sobre a escala.
       <br />
       <span className="bg-gradient-to-r from-[#4AE2B6] to-[#219B82] bg-clip-text text-transparent">
-        Previsibilidade real para quem coordena a operação.
+        Previsibilidade real para quem lidera a operação.
       </span>
     </h1>
 
     <p className="mt-8 max-w-2xl text-lg leading-8 text-zinc-400 md:text-xl">
-      O MedTurn foi feito para quem precisa manter plantões organizados,
-      revisar trocas com segurança, reduzir o desgaste da coordenação e
-      fechar o mês com uma operação muito mais clara.
-    </p>
+  O MedTurn foi feito para quem precisa manter a escala organizada,
+aprovar trocas com segurança, reduzir o desgaste da gestão
+e fechar o mês com uma operação muito mais clara.
+</p>
 
     <div className="mt-10 flex flex-wrap gap-4">
       <Link
@@ -505,10 +505,10 @@ export default function MedTurnVitrine() {
         sub="Menos dependência de planilhas, PDFs soltos e mensagens espalhadas"
       />
       <StatCard
-        value="Mais segurança"
-        label="para aprovar trocas e decisões"
-        sub="A coordenação passa a enxergar melhor o que mudou, o que está pendente e o que já foi validado"
-      />
+  value="Mais segurança"
+  label="para aprovar trocas e decisões"
+  sub="A gestão passa a enxergar melhor o que mudou, o que está pendente e o que já foi validado"
+/>
       <StatCard
         value="Mais clareza"
         label="para fechar o mês"
@@ -529,7 +529,7 @@ export default function MedTurnVitrine() {
             {[
               {
                 t: "Menos tempo resolvendo problema no WhatsApp",
-                d: "A coordenação deixa de gastar energia procurando mensagem, confirmando alteração e remontando contexto.",
+                d: "Quem organiza a escala deixa de gastar energia procurando mensagem, confirmando alteração e remontando contexto.",
               },
               {
                 t: "Mais segurança para aprovar trocas",
@@ -607,7 +607,7 @@ export default function MedTurnVitrine() {
           <SectionHeading
             eyebrow="Onde a rotina costuma travar"
             title="Os pontos que mais pesam para quem segura a escala todos os dias"
-            desc="O MedTurn foi desenhado para reduzir exatamente os atritos que mais desgastam coordenadores e gestores."
+            desc="O MedTurn foi desenhado para reduzir exatamente os desgastes que mais pressionam coordenadores e gestores."
             center
           />
 
@@ -636,19 +636,19 @@ export default function MedTurnVitrine() {
           <SectionHeading
             eyebrow="A solução"
             title="Um sistema para tirar a escala do improviso e colocar a operação no lugar."
-            desc="O MedTurn ajuda a coordenação a trabalhar com mais clareza, mais rastreabilidade e menos atrito no dia a dia."
+            desc="O MedTurn ajuda a gestão a trabalhar com mais clareza, mais rastreabilidade e menos desgaste no dia a dia."
           />
 
           <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             <FeatureCard
               icon={Layers3}
-              title="Escala em um único ambiente"
-              desc="A equipe consulta a mesma referência, com mais clareza por serviço, período e profissional."
+              title="Escala centralizada em um único ambiente"
+desc="A equipe consulta a mesma referência, com mais clareza por unidade, período e profissional."
             />
             <FeatureCard
               icon={Repeat}
-              title="Trocas dentro de um fluxo real"
-              desc="Solicitações e movimentações acontecem com participação da coordenação, e não no improviso do grupo."
+              title="Trocas dentro de um fluxo validado"
+desc="Solicitações e movimentações acontecem com participação da coordenação, e não no improviso do grupo."
             />
             <FeatureCard
               icon={BellRing}
@@ -668,7 +668,7 @@ export default function MedTurnVitrine() {
         <div className="mx-auto max-w-6xl">
           <SectionHeading
             eyebrow="Como funciona"
-            title="Uma rotina mais leve para quem coordena e mais clara para quem planta"
+            title="Uma rotina mais leve para quem lidera a escala e mais clara para toda a equipe"
             desc="O MedTurn foi pensado para acompanhar a prática real do hospital, sem complicar ainda mais a operação."
             center
           />
@@ -707,9 +707,9 @@ export default function MedTurnVitrine() {
               desc="A equipe deixa de depender de arquivos soltos e encontra a informação principal com muito mais rapidez."
             />
             <ResultItem
-              title="Aprovação com mais segurança"
-              desc="A coordenação decide sobre trocas e alterações com uma visão muito mais clara do que está acontecendo."
-            />
+  title="Aprovação com mais segurança"
+  desc="Quem lidera a escala decide sobre trocas e alterações com uma visão muito mais clara do que está acontecendo."
+/>
             <ResultItem
               title="Menos ruído na comunicação"
               desc="Mudanças relevantes deixam de se perder no meio de mensagens e grupos paralelos."
@@ -719,9 +719,9 @@ export default function MedTurnVitrine() {
               desc="A organização construída ao longo do mês reduz a pressão concentrada da conferência final."
             />
             <ResultItem
-              title="Mais profissionalismo na rotina"
-              desc="A operação ganha padrão, melhora a percepção interna da equipe e reduz a sensação de improviso."
-            />
+  title="Mais consistência na rotina"
+  desc="A operação ganha padrão, fortalece a percepção interna da equipe e reduz a sensação de improviso."
+/>
             <ResultItem
   title="Menos erro em trocas e alterações"
   desc="Quando o fluxo fica mais organizado, diminui a chance de desencontro de informação e erro operacional."
@@ -742,8 +742,8 @@ export default function MedTurnVitrine() {
 
 <p className="mt-6 text-lg leading-8 text-zinc-400">
   Se você coordena médicos, gerencia plantões ou responde pela operação
-  do hospital, sabe onde pesa: troca para revisar, equipe para alinhar,
-  plantão para cobrir e fechamento para conferir. O MedTurn ajuda a tirar
+  do hospital, sabe onde pesa: troca para aprovar, equipe para alinhar,
+  cobertura para resolver e fechamento para conferir. O MedTurn ajuda a tirar
   esse peso do improviso e colocar a rotina em um fluxo mais seguro.
 </p>
 
@@ -919,12 +919,12 @@ export default function MedTurnVitrine() {
 
               <div className="rounded-2xl bg-black/20 p-5">
                 <p className="text-sm font-bold text-white">
-                  Menos atrito para tocar a rotina
-                </p>
-                <p className="mt-2 text-sm text-zinc-400">
-                  A equipe gasta menos energia carregando falhas do processo e mais
-                  energia operando com clareza.
-                </p>
+  Menos desgaste para conduzir a rotina
+</p>
+<p className="mt-2 text-sm text-zinc-400">
+  A operação deixa de consumir energia com ruído, reconferência e correção
+de fluxo.
+</p>
               </div>
 
               <div className="rounded-2xl bg-black/20 p-5">
@@ -946,7 +946,7 @@ export default function MedTurnVitrine() {
     <SectionHeading
   eyebrow="Implantação"
   title="Uma implementação segura, para operações que não podem perder ritmo."
-  desc="O MedTurn foi pensado para entrar na rotina com segurança. A implantação é conduzida para que o sistema se adapte ao funcionamento do serviço, com mais clareza, menos atrito e uma transição muito mais organizada."
+  desc="O MedTurn foi pensado para entrar na rotina com segurança. A implantação é conduzida para que o sistema se adapte ao funcionamento do serviço, com mais clareza, menos desgaste e uma transição muito mais organizada."
   center
 />
 
@@ -990,7 +990,7 @@ export default function MedTurnVitrine() {
   Apoio real na entrada
 </p>
 <p className="mt-2 text-sm text-zinc-400">
-  A implantação não fica solta. O início é conduzido para reduzir atrito e dar mais segurança à coordenação.
+  A implantação não fica solta. O início é conduzido para reduzir dúvidas de uso e dar mais segurança à gestão.
 </p>
           </div>
 
@@ -1022,11 +1022,11 @@ export default function MedTurnVitrine() {
         Como o MedTurn se adapta à sua operação
       </p>
       <p className="mx-auto mt-3 max-w-3xl text-sm leading-relaxed text-zinc-400">
-  No MedTurn, cada unidade operacional representa uma estrutura de escala
-  acompanhada separadamente dentro da operação, como uma UTI, um pronto
-  atendimento, um centro cirúrgico ou outro núcleo com rotina própria.
-  Isso permite que a proposta acompanhe o tamanho real da operação e o
-  nível de organização que a coordenação precisa sustentar no dia a dia.
+  No MedTurn, cada unidade operacional representa uma frente de escala
+acompanhada separadamente dentro da operação, como uma UTI, um pronto
+atendimento, um centro cirúrgico ou outro núcleo com rotina própria.
+Assim, a proposta acompanha o tamanho real da operação e o nível de
+organização que a gestão precisa sustentar no dia a dia.
 </p>
     </div>
 
@@ -1055,7 +1055,7 @@ export default function MedTurnVitrine() {
         features={[
   "Até 3 unidades operacionais",
   "Tudo do plano Essencial",
-  "Gestão centralizada por unidade",
+  "Controle centralizado por unidade operacional",
   "Maior controle da operação",
   "Fluxo mais robusto para coordenação",
   "Condição comercial mais estratégica",
@@ -1092,13 +1092,13 @@ export default function MedTurnVitrine() {
             <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#4AE2B6]/10 to-transparent" />
 
             <h2 className="text-3xl font-black tracking-tight text-white md:text-5xl">
-              Se a sua escala hoje depende de planilha, PDF e grupo, já passou da hora de respirar melhor.
-            </h2>
+  Sua operação não precisa continuar refém de planilha, PDF e grupo.
+</h2>
 
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-zinc-400">
-              O MedTurn ajuda sua equipe a trabalhar com mais organização, menos
-              ruído e muito mais segurança na rotina.
-            </p>
+<p className="mx-auto mt-6 max-w-2xl text-lg text-zinc-400">
+  O MedTurn ajuda a gestão a conduzir a operação com mais organização,
+  mais segurança e menos desgaste ao longo de todo o mês.
+</p>
 
             <div className="mt-10 flex flex-wrap justify-center gap-4">
               <Link
