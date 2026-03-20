@@ -443,7 +443,13 @@ export default function MedTurnVitrine() {
 
   return (
     <div className="min-h-screen bg-[#071312] text-zinc-200 selection:bg-[#4AE2B6]/30 selection:text-white">
-      <header className="fixed top-0 z-[100] w-full border-b border-white/5 bg-[#071312]/80 backdrop-blur-lg">
+      <header
+  className={`fixed top-0 z-[100] w-full border-b border-white/5 transition-colors duration-300 ${
+    isMenuOpen
+      ? "bg-[#071312]"
+      : "bg-[#071312]/80 backdrop-blur-lg"
+  }`}
+>
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="text-xl font-black tracking-tighter text-white">
             MED<span className="text-[#4AE2B6]">TURN</span>
@@ -479,34 +485,43 @@ export default function MedTurnVitrine() {
         {/* Overlay do Menu Mobile */}
         <div
   aria-hidden={!isMenuOpen}
-  className={`fixed inset-0 z-40 flex flex-col bg-[#071312] p-8 transition-all duration-300 md:hidden ${
-    isMenuOpen
-      ? "translate-x-0 opacity-100 pointer-events-auto"
-      : "translate-x-full opacity-0 pointer-events-none"
-  }`}
+  className={`fixed left-0 right-0 top-[76px] bottom-0 z-40 isolate overflow-y-auto bg-[#071312] p-8 transition-[transform,opacity] duration-300 md:hidden ${
+  isMenuOpen
+    ? "translate-x-0 opacity-100 pointer-events-auto"
+    : "translate-x-full opacity-0 pointer-events-none"
+}`}
 >
-          <div className="mt-24 flex flex-col gap-8 text-3xl font-black">
-            {navLinks.map((link) => (
-              <Link 
-                key={link.href} 
-                href={link.href} 
-                onClick={() => setIsMenuOpen(false)}
-                className="text-zinc-500 transition-colors hover:text-[#4AE2B6]"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
+  <div className="flex flex-col gap-8 pt-6 text-3xl font-black">
+    {navLinks.map((link) => (
+      <Link
+        key={link.href}
+        href={link.href}
+        onClick={() => setIsMenuOpen(false)}
+        className="text-zinc-500 transition-colors hover:text-[#4AE2B6]"
+      >
+        {link.label}
+      </Link>
+    ))}
+  </div>
 
-          <div className="mt-auto space-y-4">
-            <Link href="/login" onClick={() => setIsMenuOpen(false)} className="flex h-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-lg font-bold text-white">
-              Entrar no sistema
-            </Link>
-            <Link href="/solicitar-implantacao" onClick={() => setIsMenuOpen(false)} className="flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] text-lg font-bold text-[#071312]">
-              Solicitar proposta
-            </Link>
-          </div>
-        </div>
+  <div className="space-y-4 pt-10">
+    <Link
+      href="/login"
+      onClick={() => setIsMenuOpen(false)}
+      className="flex h-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-lg font-bold text-white"
+    >
+      Entrar no sistema
+    </Link>
+
+    <Link
+      href="/solicitar-implantacao"
+      onClick={() => setIsMenuOpen(false)}
+      className="flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] text-lg font-bold text-[#071312]"
+    >
+      Solicitar proposta
+    </Link>
+  </div>
+</div>
       </header>
 
       <section className="relative overflow-hidden px-6 pb-20 pt-40 md:pb-28 md:pt-48">
