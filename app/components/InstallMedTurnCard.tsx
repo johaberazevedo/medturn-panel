@@ -65,8 +65,8 @@ export default function InstallMedTurnCard() {
               Instale o MedTurn
             </h2>
             <p className="text-xs text-slate-500">
-              Abra mais rápido pela tela inicial do seu Android
-            </p>
+  Abra mais rápido no seu Android ou computador
+</p>
           </div>
         </div>
 
@@ -79,13 +79,12 @@ export default function InstallMedTurnCard() {
         <div className="mt-4 pl-16">
           <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
             <p className="text-xs text-slate-600 leading-relaxed">
-              No Chrome do Android, abra o menu de <span className="font-bold">3 pontinhos</span> e toque em{' '}
-              <span className="font-bold">Adicionar à tela inicial</span> ou{' '}
-              <span className="font-bold">Instalar app</span>, se essa opção aparecer.
-            </p>
+  No Chrome ou Edge, procure a opção <span className="font-bold">Instalar app</span> ou{' '}
+  <span className="font-bold">Adicionar à tela inicial</span>, quando ela estiver disponível no navegador.
+</p>
 
             <p className="mt-3 text-[11px] text-slate-400 leading-relaxed">
-              Isso deixa o acesso mais rápido e com sensação mais próxima de app.
+              Isso deixa o acesso mais rápido e mais prático no dia a dia.
             </p>
 
             <div className="mt-4 flex justify-end">

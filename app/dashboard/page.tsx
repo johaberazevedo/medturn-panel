@@ -152,14 +152,56 @@ const [conflictTargetYear, setConflictTargetYear] = useState<number | null>(null
   }
 
     function statusChipClass(status: string) {
-    switch (status) {
-      case 'approved': case 'aprovado': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'rejected': case 'rejeitado': case 'recusado': return 'bg-red-50 text-red-700 border-red-200';
-      default: return 'bg-amber-50 text-amber-700 border-amber-200';
-    }
+  switch (status) {
+    case 'approved': case 'aprovado': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'rejected': case 'rejeitado': case 'recusado': return 'bg-red-50 text-red-700 border-red-200';
+    default: return 'bg-amber-50 text-amber-700 border-amber-200';
   }
+}
 
-  const loadDoctors = useCallback(async (hId: string) => {
+// 👇 COLE AQUI
+function isDirectOfferPending(r: ShiftSwapNotification) {
+  return r.reason === '__direct_offer__';
+}
+
+function isDirectOfferAccepted(r: ShiftSwapNotification) {
+  return r.reason === '__direct_offer__accepted';
+}
+
+function isAvailabilityAccepted(r: ShiftSwapNotification) {
+  return r.reason === '__offer_via_disponibilidade__';
+}
+
+function isMarketplaceOpen(r: ShiftSwapNotification) {
+  return (
+    (r.status === 'pendente' || r.status === 'pending') &&
+    !r.target_user_id
+  );
+}
+
+function isAwaitingCoordination(r: ShiftSwapNotification) {
+  return (
+    (r.status === 'pendente' || r.status === 'pending') &&
+    (
+      isDirectOfferAccepted(r) ||
+      isAvailabilityAccepted(r)
+    )
+  );
+}
+
+function visualStatusLabel(r: ShiftSwapNotification) {
+  if (isDirectOfferPending(r)) return 'Oferta direcionada';
+  if (isAwaitingCoordination(r)) return 'Em processo';
+  return statusLabel(r.status);
+}
+
+function visualStatusChipClass(r: ShiftSwapNotification) {
+  if (isDirectOfferPending(r)) return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (isAwaitingCoordination(r)) return 'bg-sky-50 text-sky-700 border-sky-200';
+  return statusChipClass(r.status);
+}
+
+const loadDoctors = useCallback(async (hId: string) => {
   const { data, error } = await supabase
     .from('hospital_users')
     .select('user_id, role, users(full_name, email)')
@@ -233,12 +275,15 @@ const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
     ? hospitalRel[0]?.name
     : hospitalRel?.name;
 
-  const { count: awaitingConfirmationCount, error: awaitingError } = await supabase
+  const { data: awaitingRows, error: awaitingError } = await supabase
   .from('shift_swap_requests')
-  .select(
-    'id, shift:from_shift_id!inner(date)',
-    { count: 'exact', head: true }
-  )
+  .select(`
+    id,
+    status,
+    reason,
+    target_user_id,
+    shift:from_shift_id!inner(date)
+  `)
   .eq('hospital_id', otherHospitalId)
   .eq('status', 'pendente')
   .not('target_user_id', 'is', null)
@@ -249,7 +294,14 @@ if (awaitingError) {
   continue;
 }
 
-const c = awaitingConfirmationCount ?? 0;
+const awaitingConfirmationCount = (awaitingRows ?? []).filter((row: any) => {
+  return (
+    row.reason === '__direct_offer__accepted' ||
+    row.reason === '__offer_via_disponibilidade__'
+  );
+}).length;
+
+const c = awaitingConfirmationCount;
 
 if (c > 0) {
   alerts.push({
@@ -452,14 +504,14 @@ const loadSwapRequests = useCallback(async (hId: string) => {
       });
 
       const sortedSwaps = formattedSwaps.sort((a, b) => {
-        const aHasTarget = !!a.target_user_id;
-        const bHasTarget = !!b.target_user_id;
+  const aAwaiting = isAwaitingCoordination(a);
+  const bAwaiting = isAwaitingCoordination(b);
 
-        if (aHasTarget && !bHasTarget) return -1;
-        if (!aHasTarget && bHasTarget) return 1;
+  if (aAwaiting && !bAwaiting) return -1;
+  if (!aAwaiting && bAwaiting) return 1;
 
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+});
 
       setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
     }
@@ -902,36 +954,47 @@ void loadConflictCount(user.id);
           <li
             key={r.id}
             className={`border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50 transition-all ${
-              r.target_user_id ? 'border-emerald-400 shadow-sm shadow-emerald-100' : ''
-            }`}
+  isAwaitingCoordination(r)
+    ? 'border-emerald-400 shadow-sm shadow-emerald-100'
+    : isDirectOfferPending(r)
+    ? 'border-blue-300 shadow-sm shadow-blue-50'
+    : ''
+}`}
           >
             <div className="flex justify-between items-center">
               <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
-              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + statusChipClass(r.status)}>
-                {statusLabel(r.status)}
-              </span>
+              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + visualStatusChipClass(r)}>
+  {visualStatusLabel(r)}
+</span>
             </div>
 
             <div className="text-slate-600 mt-1">
-              {r.target_user_id ? (
-                <p>
-                  <span className="text-emerald-600 font-bold">
-                    ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
-                  </span>{' '}
-                  a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]} —{' '}
-                  <span className="text-[10px] text-slate-500">clique para confirmar</span>
-                </p>
-              ) : (
-                <p>
-                  Solicitação de cobertura:{' '}
-                  <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
-                </p>
-              )}
+  {isAwaitingCoordination(r) ? (
+    <p>
+      <span className="text-emerald-600 font-bold">
+        ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
+      </span>{' '}
+      a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]} —{' '}
+      <span className="text-[10px] text-slate-500">clique para confirmar</span>
+    </p>
+  ) : isDirectOfferPending(r) ? (
+    <p>
+      <span className="text-blue-700 font-bold">
+        ● Oferta direcionada enviada para {(r.target?.full_name ?? r.target?.email ?? 'Médico').split(' ')[0]}
+      </span>{' '}
+      <span className="text-[10px] text-slate-500">aguardando aceite do médico</span>
+    </p>
+  ) : (
+    <p>
+      Solicitação de cobertura:{' '}
+      <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
+    </p>
+  )}
 
-              <div className="text-[10px] text-slate-400 mt-1">
-                📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
-              </div>
-            </div>
+  <div className="text-[10px] text-slate-400 mt-1">
+    📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+  </div>
+</div>
 
             <div className="flex justify-end mt-1">
               <button

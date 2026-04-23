@@ -86,6 +86,47 @@ function statusChipClass(status: string) {
   }
 }
 
+function visualStatusLabel(r: ShiftSwapDetail) {
+  if (isDirectOfferPending(r)) return 'Oferta direcionada';
+  if (isAwaitingCoordination(r)) return 'Em processo';
+  return statusLabel(r.status);
+}
+
+function visualStatusChipClass(r: ShiftSwapDetail) {
+  if (isDirectOfferPending(r)) return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (isAwaitingCoordination(r)) return 'bg-sky-50 text-sky-700 border-sky-200';
+  return statusChipClass(r.status);
+}
+
+function isDirectOfferPending(r: ShiftSwapDetail) {
+  return r.reason === '__direct_offer__';
+}
+function isDirectOfferAccepted(r: ShiftSwapDetail) {
+  return r.reason === '__direct_offer__accepted';
+}
+
+function isAvailabilityAccepted(r: ShiftSwapDetail) {
+  return r.reason === '__offer_via_disponibilidade__';
+}
+
+function isMarketplaceOpen(r: ShiftSwapDetail) {
+  return (
+    (r.status === 'pendente' || r.status === 'pending') &&
+    !r.target_user_id
+  );
+}
+
+function isAwaitingCoordination(r: ShiftSwapDetail) {
+  return (
+    (r.status === 'pendente' || r.status === 'pending') &&
+    !!r.target_user_id &&
+    (
+      isDirectOfferAccepted(r) ||
+      isAvailabilityAccepted(r)
+    )
+  );
+}
+
 export default function SwapRequestDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -286,6 +327,10 @@ export default function SwapRequestDetailPage() {
 
   async function handleConfirmSwap() {
     if (!request || !hospitalId) return;
+if (isDirectOfferPending(request)) {
+  setErrorMsg('Esse médico ainda não aceitou a oferta no aplicativo.');
+  return;
+}
     
     const finalDoctorId = request.target_user_id || selectedDoctor;
 
@@ -399,9 +444,9 @@ export default function SwapRequestDetailPage() {
                  <p className="text-xs text-slate-500">Solicitante</p>
                  <p className="font-semibold text-lg">{requesterName}</p>
               </div>
-              <span className={'px-2 py-1 rounded-full border text-xs font-medium ' + statusChipClass(request.status)}>
-                {statusLabel(request.status)}
-              </span>
+              <span className={'px-2 py-1 rounded-full border text-xs font-medium ' + visualStatusChipClass(request)}>
+  {visualStatusLabel(request)}
+</span>
            </div>
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2 border-t border-b border-slate-100">
@@ -414,9 +459,15 @@ export default function SwapRequestDetailPage() {
                  <p className="text-sm text-slate-800">{currentDoctor}</p>
               </div>
               <div>
-                 <p className="text-xs text-slate-500 font-semibold">Pedido para</p>
-                 <p className="text-sm text-slate-800">{request.target_user_id ? (request.target?.full_name ?? 'Médico específico') : 'Qualquer médico'}</p>
-              </div>
+  <p className="text-xs text-slate-500 font-semibold">Pedido para</p>
+  <p className="text-sm text-slate-800">
+    {isDirectOfferPending(request) || isDirectOfferAccepted(request)
+      ? (request.target?.full_name ?? request.target?.email ?? 'Médico específico')
+      : request.target_user_id
+        ? (request.target?.full_name ?? request.target?.email ?? 'Médico selecionado')
+        : 'Qualquer médico'}
+  </p>
+</div>
               <div>
                  <p className="text-xs text-slate-500 font-semibold">Motivo</p>
                  <p className="text-sm text-slate-800">{request.reason || '—'}</p>
@@ -425,28 +476,58 @@ export default function SwapRequestDetailPage() {
 
            <div className="space-y-3">
               <p className="text-sm font-semibold text-slate-700">Definir quem assume o plantão</p>
-              <p className="text-xs text-slate-500">Se a solicitação for para "Qualquer médico", você pode selecionar abaixo quem vai assumir. Isso atualizará a escala automaticamente.</p>
+              <p className="text-xs text-slate-500">
+  Se a solicitação estiver aberta para qualquer médico, você pode definir manualmente quem vai assumir.
+  Se já houver um aceite no aplicativo, basta confirmar para atualizar a escala.
+</p>
               
-{request.target_user_id ? (
+{isDirectOfferPending(request) ? (
+  <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-4">
+    <div className="flex items-center gap-2 mb-1">
+      <span className="flex h-2 w-2 rounded-full bg-blue-500"></span>
+      <p className="text-sm font-bold text-blue-800">Oferta direcionada enviada</p>
+    </div>
+    <p className="text-xs text-blue-700">
+      Este plantão foi oferecido diretamente para{' '}
+      <strong>{request.target?.full_name ?? request.target?.email ?? 'o médico selecionado'}</strong>,
+      mas ele ainda não aceitou no aplicativo.
+    </p>
+  </div>
+) : isAwaitingCoordination(request) ? (
   <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4">
     <div className="flex items-center gap-2 mb-1">
       <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-      <p className="text-sm font-bold text-emerald-800">Interesse Registrado</p>
+      <p className="text-sm font-bold text-emerald-800">Interesse registrado</p>
     </div>
     <p className="text-xs text-emerald-700">
       O médico <strong>{request.target?.full_name ?? request.target?.email ?? 'Selecionado'}</strong> aceitou este plantão via aplicativo e está aguardando sua confirmação para assumir a escala.
     </p>
   </div>
-) : (
+) : isMarketplaceOpen(request) ? (
   <p className="text-xs text-slate-500 mb-4">
     Ainda não há interessados. Você pode atribuir um médico manualmente abaixo.
   </p>
-)}
+) : request.target_user_id ? (
+  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl mb-4">
+    <p className="text-xs text-slate-600">
+      Esta solicitação já possui um médico vinculado:{' '}
+      <strong>{request.target?.full_name ?? request.target?.email ?? 'Selecionado'}</strong>.
+    </p>
+  </div>
+) : null}
               <select 
   value={selectedDoctor} 
   onChange={e => setSelectedDoctor(e.target.value)}
-  disabled={!isEditable || !!request.target_user_id}
-  className={`w-full border rounded-lg px-3 py-2 text-sm ${request.target_user_id ? 'bg-slate-100' : 'bg-slate-50'}`}
+  disabled={
+    !isEditable ||
+    isDirectOfferPending(request) ||
+    isAwaitingCoordination(request)
+  }
+  className={`w-full border rounded-lg px-3 py-2 text-sm ${
+    isDirectOfferPending(request) || isAwaitingCoordination(request)
+      ? 'bg-slate-100'
+      : 'bg-slate-50'
+  }`}
 >
                 <option value="">Selecione o médico substituto...</option>
                 {doctors.map(d => (
@@ -465,12 +546,20 @@ export default function SwapRequestDetailPage() {
                   Rejeitar
                 </button>
                 <button 
-                  onClick={handleConfirmSwap} 
-                  disabled={saving}
-                  className="px-4 py-2 text-xs font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800"
-                >
-                  {saving ? 'Processando...' : 'Confirmar troca e atualizar escala'}
-                </button>
+  onClick={handleConfirmSwap} 
+  disabled={saving || isDirectOfferPending(request)}
+  className={`px-4 py-2 text-xs font-medium rounded-lg ${
+    saving || isDirectOfferPending(request)
+      ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+      : 'text-white bg-slate-900 hover:bg-slate-800'
+  }`}
+>
+  {saving
+    ? 'Processando...'
+    : isDirectOfferPending(request)
+      ? 'Confirmar após aceite do médico'
+      : 'Confirmar troca e atualizar escala'}
+</button>
              </div>
            )}
            

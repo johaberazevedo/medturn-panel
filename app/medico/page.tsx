@@ -49,18 +49,6 @@ function isExpiredShift(shift: {
   return minutes >= cutoff[shift.period];
 }
 
-const WEB_PUSH_PILOT_USER_IDS = [
-  'd6309a52-3678-424f-b232-c4f42bcb7785',
-  '92ccb1ad-adf2-4c7e-aba0-ba0e397a45af',
-  '6b0e88ec-f92b-4662-af77-70d2210dca9f',
-  'ef659b9d-0b42-47fa-b429-856701556b39',
-  '92afc0ad-6556-48e4-8aa6-628e192ef4a2',
-];
-
-function isWebPushPilot(userId?: string | null) {
-  if (!userId) return false;
-  return WEB_PUSH_PILOT_USER_IDS.includes(userId);
-}
 export default function MedicoHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -69,7 +57,6 @@ const [stats, setStats] = useState({ disponiveis: 0, disponibilidade30d: 0 });
 const [nextShift, setNextShift] = useState<NextShift | null>(null);
 const [canCheckin, setCanCheckin] = useState(false);
 const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-const [webPushEnabled, setWebPushEnabled] = useState(false);
 
 const loadHomeData = useCallback(async (userId: string) => {
   const { data: profile } = await supabase
@@ -186,10 +173,9 @@ const loadHomeData = useCallback(async (userId: string) => {
     }
 
     setCurrentUserId(user.id);
-    setWebPushEnabled(isWebPushPilot(user.id));
 
-    await loadHomeData(user.id);
-    setLoading(false);
+await loadHomeData(user.id);
+setLoading(false);
   }
 
   init();
@@ -277,12 +263,12 @@ useEffect(() => {
 
   return (
   <>
-<PilotManifestLink enabled={webPushEnabled} />
+<PilotManifestLink enabled={true} />
 
-    <OneSignalInit
-      enabled={webPushEnabled}
-      externalId={currentUserId}
-    />
+<OneSignalInit
+  enabled={true}
+  externalId={currentUserId}
+/>
 
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white px-6 pt-8 pb-6 rounded-b-[40px] shadow-sm">
@@ -320,9 +306,8 @@ useEffect(() => {
 
       <main className="p-6 space-y-4">
         
-{webPushEnabled && <EnableWebPushButton />}
-
-{webPushEnabled && <InstallMedTurnCard />}
+<EnableWebPushButton />
+<InstallMedTurnCard />
         {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
         {canCheckin && (
           <button 

@@ -91,6 +91,41 @@ function isExpiredShift(shift: {
   return minutes >= cutoff[shift.period];
 }
 
+function isPendingStatus(status: string) {
+  return status === 'pendente' || status === 'pending';
+}
+
+function isDirectOfferPending(req: SwapRequest) {
+  return req.reason === '__direct_offer__';
+}
+
+function isDirectOfferAccepted(req: SwapRequest) {
+  return req.reason === '__direct_offer__accepted';
+}
+
+function isAvailabilityAccepted(req: SwapRequest) {
+  return req.reason === '__offer_via_disponibilidade__';
+}
+
+function isMarketplaceOpen(req: SwapRequest) {
+  return isPendingStatus(req.status) && !req.target_user_id;
+}
+
+function isAwaitingCoordination(req: SwapRequest) {
+  return (
+    isPendingStatus(req.status) &&
+    !!req.target_user_id &&
+    (
+      isDirectOfferAccepted(req) ||
+      isAvailabilityAccepted(req)
+    )
+  );
+}
+
+function isDirectedToMePending(req: SwapRequest, userId: string | null) {
+  return !!userId && isDirectOfferPending(req) && req.target_user_id === userId;
+}
+
 function PropostasContent() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'recebidas' | 'enviadas'>('recebidas');
@@ -153,8 +188,18 @@ function PropostasContent() {
 
     const normalizeSent = (list: any[]) => normalizeBase(list);
 
-    const normalizeReceived = (list: any[]) =>
-      normalizeBase(list).filter(item => !isExpiredShift(item.shift));
+const normalizeReceived = (list: any[]) =>
+  normalizeBase(list)
+    .filter(item => !isExpiredShift(item.shift))
+    .filter(item => {
+      const open = isMarketplaceOpen(item);
+      const directedToMe = isDirectedToMePending(item, uid);
+      const awaitingForMe =
+        isAwaitingCoordination(item) &&
+        item.target_user_id === uid;
+
+      return open || directedToMe || awaitingForMe;
+    });
 
     setSent(normalizeSent(sentRes.data ?? []) as SwapRequest[]);
     setReceived(normalizeReceived(receivedRes.data ?? []) as SwapRequest[]);
@@ -229,36 +274,83 @@ function PropostasContent() {
   }, [userId, fetchData]);
 
   const isMinePending = (req: SwapRequest) =>
-    req.status === 'pendente' && !!userId && req.target_user_id === userId;
+  isAwaitingCoordination(req) && !!userId && req.target_user_id === userId;
 
-  const isOpen = (req: SwapRequest) =>
-    req.status === 'pendente' && req.target_user_id === null;
+const isOpen = (req: SwapRequest) =>
+  isMarketplaceOpen(req);
 
-  const isTakenByOther = (req: SwapRequest) =>
-    req.status === 'pendente' &&
-    req.target_user_id !== null &&
-    !!userId &&
-    req.target_user_id !== userId;
+const isTakenByOther = (req: SwapRequest) =>
+  isAwaitingCoordination(req) &&
+  !!userId &&
+  req.target_user_id !== userId;
 
-  const displayStatus = (req: SwapRequest): DisplayStatus => {
-    if (req.status === 'pendente' && req.target_user_id) return 'em_processo';
-    return req.status;
-  };
+const isDirectOfferForMe = (req: SwapRequest) =>
+  isDirectedToMePending(req, userId);
+
+const displayStatus = (req: SwapRequest): DisplayStatus => {
+  if (isAwaitingCoordination(req)) return 'em_processo';
+  return req.status;
+};
 
   const firstName = (s?: string | null) => (s ?? '').trim().split(' ')[0] || 'Alguém';
 
-  async function executeAction(
-    id: number,
-    action: 'pegar' | 'rejeitado' | 'cancelado',
-    shiftId?: number
-  ) {
-    setProcessingId(id);
-    try {
-      if (!userId) throw new Error('Sem usuário logado');
+async function acceptDirectOffer(req: SwapRequest) {
+  if (!userId) throw new Error('Sem usuário logado');
 
-      if (action === 'pegar') {
+  const { data, error } = await supabase
+    .from('shift_swap_requests')
+    .update({
+      reason: '__direct_offer__accepted',
+    })
+    .eq('id', req.id)
+    .eq('status', 'pendente')
+    .eq('target_user_id', userId)
+    .eq('reason', '__direct_offer__')
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (!data) {
+    throw new Error('Essa oferta direcionada não está mais disponível para você.');
+  }
+}
+
+  async function executeAction(
+  req: SwapRequest,
+  action: 'pegar' | 'rejeitado' | 'cancelado'
+) {
+  setProcessingId(req.id);
+
+  try {
+    if (!userId) throw new Error('Sem usuário logado');
+
+    if (action === 'pegar') {
+      if (isDirectOfferForMe(req)) {
+        const { data, error } = await supabase
+          .from('shift_swap_requests')
+          .update({
+            reason: '__direct_offer__accepted',
+            status: 'pendente',
+          })
+          .eq('id', req.id)
+          .eq('status', 'pendente')
+          .eq('target_user_id', userId)
+          .eq('reason', '__direct_offer__')
+          .select('id')
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+          toast.error('Essa oferta direcionada não está mais disponível para você.');
+          return;
+        }
+
+        toast.success('Oferta aceita! Agora falta a coordenação confirmar.');
+      } else {
         const { error } = await supabase.rpc('claim_shift_swap', {
-          swap_id: id,
+          swap_id: req.id,
           candidate_id: userId,
         });
 
@@ -274,39 +366,59 @@ function PropostasContent() {
         }
 
         toast.success('Pedido enviado! Aguardando confirmação da coordenação.');
-      } else {
-        const { error } = await supabase
-          .from('shift_swap_requests')
-          .update({ status: action })
-          .eq('id', id);
-
-        if (error) throw error;
-
-        toast.success('Status atualizado.');
       }
+    } else {
+      const { error } = await supabase
+        .from('shift_swap_requests')
+        .update({ status: action })
+        .eq('id', req.id);
 
-      await fetchData(userId);
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Erro ao processar ação.');
-    } finally {
-      setProcessingId(null);
+      if (error) throw error;
+
+      toast.success('Status atualizado.');
     }
+
+    await fetchData(userId);
+  } catch (err: any) {
+    toast.error(err?.message ?? 'Erro ao processar ação.');
+  } finally {
+    setProcessingId(null);
   }
+}
 
   const handleAction = (req: SwapRequest, action: 'pegar' | 'rejeitado' | 'cancelado') => {
-    if (action === 'pegar') {
-      toast('Assumir este plantão?', {
-        description: `Confirmar entrada no dia ${formatDate(req.shift?.date ?? '')} no ${req.hospitals?.name ?? 'hospital'}?`,
+  if (action === 'pegar') {
+    const periodLabelMap: Record<string, string> = {
+      manha: 'Manhã',
+      tarde: 'Tarde',
+      noite: 'Noite',
+      '24h': '24h',
+    };
+
+    const shiftPeriod = req.shift?.period
+      ? (periodLabelMap[req.shift.period] ?? req.shift.period)
+      : 'Plantão';
+
+    const shiftDate = formatDate(req.shift?.date ?? '');
+    const hospitalName = req.hospitals?.name ?? 'hospital';
+
+    toast(
+      isDirectOfferForMe(req) ? 'Aceitar oferta direcionada?' : 'Assumir este plantão?',
+      {
+        description: isDirectOfferForMe(req)
+          ? `Esse plantão de ${shiftPeriod}, em ${shiftDate}, no ${hospitalName}, foi oferecido diretamente para você.`
+          : `Confirmar aceite do plantão de ${shiftPeriod}, em ${shiftDate}, no ${hospitalName}?`,
         action: {
           label: 'Confirmar',
-          onClick: () => executeAction(req.id, 'pegar', req.from_shift_id),
+          onClick: () => executeAction(req, 'pegar'),
         },
         cancel: { label: 'Voltar', onClick: () => {} },
-      });
-    } else {
-      executeAction(req.id, action);
-    }
-  };
+      }
+    );
+  } else {
+    executeAction(req, action);
+  }
+};
 
   if (loading) {
     return (
@@ -391,60 +503,76 @@ function PropostasContent() {
               )}
             </div>
 
-            {activeTab === 'enviadas' && req.status === 'pendente' && req.target_user_id && (
-              <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-widest">Interessado</p>
-                <p className="text-[11px] font-medium leading-relaxed">
-                  <span className="font-bold">{firstName(req.target?.full_name)}</span> aceitou sua troca. Agora falta a coordenação confirmar no painel.
-                </p>
-              </div>
-            )}
+            {activeTab === 'enviadas' && isAwaitingCoordination(req) && req.target_user_id && (
+  <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Aguardando coordenação</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      <span className="font-bold">{firstName(req.target?.full_name)}</span> aceitou sua troca. Agora falta a coordenação confirmar no painel.
+    </p>
+  </div>
+)}
 
-            {activeTab === 'recebidas' && isMinePending(req) && (
-              <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-widest">Aguardando confirmação</p>
-                <p className="text-[11px] font-medium leading-relaxed">
-                  Você solicitou este plantão. A coordenação precisa confirmar no painel.
-                </p>
-              </div>
-            )}
+            {activeTab === 'recebidas' && isDirectOfferForMe(req) && (
+  <div className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Oferta direcionada</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      Este plantão foi oferecido diretamente para você e ainda aguarda seu aceite.
+    </p>
+  </div>
+)}
 
-            {activeTab === 'recebidas' && isTakenByOther(req) && (
-              <div className="mb-4 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-widest">Já em processo de troca</p>
-                <p className="text-[11px] font-medium leading-relaxed">
-                  <span className="font-bold">{firstName(req.target?.full_name)}</span> já aceitou esse plantão e está aguardando a coordenação confirmar.
-                </p>
-              </div>
-            )}
+{activeTab === 'recebidas' && isMinePending(req) && (
+  <div className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Aguardando confirmação</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      Você aceitou este plantão. A coordenação precisa confirmar no painel.
+    </p>
+  </div>
+)}
+
+{activeTab === 'recebidas' && isTakenByOther(req) && (
+  <div className="mb-4 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl px-4 py-3">
+    <p className="text-[10px] font-black uppercase tracking-widest">Já em processo de troca</p>
+    <p className="text-[11px] font-medium leading-relaxed">
+      <span className="font-bold">{firstName(req.target?.full_name)}</span> já aceitou esse plantão e está aguardando a coordenação confirmar.
+    </p>
+  </div>
+)}
 
             <div className="flex gap-2">
               {activeTab === 'recebidas' ? (
                 <button
-                  disabled={
-                    processingId === req.id || isMinePending(req) || isTakenByOther(req) || !isOpen(req)
-                  }
-                  onClick={() => handleAction(req, 'pegar')}
-                  className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all active:scale-[0.98] disabled:opacity-60 ${
-                    isMinePending(req)
-                      ? 'bg-amber-100 text-amber-800'
-                      : isTakenByOther(req)
-                        ? 'bg-slate-100 text-slate-400 border border-slate-200'
-                        : isOpen(req)
-                          ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
-                          : 'bg-slate-200 text-slate-500'
-                  }`}
-                >
-                  {processingId === req.id
-                    ? 'Processando...'
-                    : isMinePending(req)
-                      ? 'Aguardando coordenação'
-                      : isTakenByOther(req)
-                        ? 'Já em processo de troca'
-                        : isOpen(req)
-                          ? 'Pegar Plantão'
-                          : 'Indisponível'}
-                </button>
+  disabled={
+    processingId === req.id ||
+    isMinePending(req) ||
+    isTakenByOther(req) ||
+    (!isOpen(req) && !isDirectOfferForMe(req))
+  }
+  onClick={() => handleAction(req, 'pegar')}
+  className={`w-full py-4 rounded-2xl text-[11px] font-black uppercase transition-all active:scale-[0.98] disabled:opacity-60 ${
+    isDirectOfferForMe(req)
+      ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-200'
+      : isMinePending(req)
+        ? 'bg-amber-100 text-amber-800'
+        : isTakenByOther(req)
+          ? 'bg-slate-100 text-slate-400 border border-slate-200'
+          : isOpen(req)
+            ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+            : 'bg-slate-200 text-slate-500'
+  }`}
+>
+  {processingId === req.id
+    ? 'Processando...'
+    : isDirectOfferForMe(req)
+      ? 'Aceitar oferta'
+      : isMinePending(req)
+        ? 'Aguardando coordenação'
+        : isTakenByOther(req)
+          ? 'Já em processo de troca'
+          : isOpen(req)
+            ? 'Pegar Plantão'
+            : 'Indisponível'}
+</button>
               ) : (
                 req.status === 'pendente' && (
                   <button
