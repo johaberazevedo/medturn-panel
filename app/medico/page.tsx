@@ -115,25 +115,36 @@ const loadHomeData = useCallback(async (userId: string) => {
   );
   setCanCheckin(!!hasEnabledCheckin);
 
-  const { data: swapRows, error: swapErr } = await supabase
-    .from('shift_swap_requests')
-    .select('id, target_user_id, shift:from_shift_id(date, period)')
-    .in('hospital_id', hospitalIds)
-    .eq('status', 'pendente')
-    .neq('requester_user_id', userId)
-    .or(`target_user_id.eq.${userId},target_user_id.is.null`);
+const { data: swapRows, error: swapErr } = await supabase
+  .from('shift_swap_requests')
+  .select('id, target_user_id, reason, shift:from_shift_id(date, period)')
+  .in('hospital_id', hospitalIds)
+  .eq('status', 'pendente')
+  .neq('requester_user_id', userId)
+  .or(`target_user_id.eq.${userId},target_user_id.is.null`);
 
   let countDisponiveis = 0;
 
   if (!swapErr) {
     countDisponiveis = (swapRows ?? [])
-      .map((row: any) => ({
-        ...row,
-        shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
-      }))
-      .filter(r => r.shift?.date && r.shift?.period)
-      .filter(r => !isExpiredShift(r.shift))
-      .length;
+  .map((row: any) => ({
+    ...row,
+    shift: Array.isArray(row.shift) ? row.shift[0] : row.shift,
+  }))
+  .filter(r => r.shift?.date && r.shift?.period)
+  .filter(r => !isExpiredShift(r.shift))
+  .filter(r => {
+    const isMarketplaceOpen =
+  r.target_user_id === null &&
+  r.reason !== '__offer_via_disponibilidade__';
+
+    const isDirectedPendingForMe =
+      r.target_user_id === userId &&
+      r.reason === '__direct_offer__';
+
+    return isMarketplaceOpen || isDirectedPendingForMe;
+  })
+  .length;
   }
 
   const end30 = (() => {
@@ -350,8 +361,8 @@ useEffect(() => {
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-2xl">🤝</div>
             <div className="text-left">
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Plantões Disponíveis</h2>
-              <p className="text-xs text-slate-500">Encontre oportunidades extras</p>
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Propostas</h2>
+<p className="text-xs text-slate-500">Encontre oportunidades extras e gerencie suas trocas.</p>
             </div>
           </div>
           {stats.disponiveis > 0 && (

@@ -108,7 +108,21 @@ function isAvailabilityAccepted(req: SwapRequest) {
 }
 
 function isMarketplaceOpen(req: SwapRequest) {
-  return isPendingStatus(req.status) && !req.target_user_id;
+  return (
+    isPendingStatus(req.status) &&
+    !req.target_user_id &&
+    req.reason !== '__offer_via_disponibilidade__'
+  );
+}
+
+function isMarketplaceAccepted(req: SwapRequest) {
+  return (
+    isPendingStatus(req.status) &&
+    !!req.target_user_id &&
+    req.reason !== '__direct_offer__' &&
+    req.reason !== '__direct_offer__accepted' &&
+    req.reason !== '__offer_via_disponibilidade__'
+  );
 }
 
 function isAwaitingCoordination(req: SwapRequest) {
@@ -116,6 +130,7 @@ function isAwaitingCoordination(req: SwapRequest) {
     isPendingStatus(req.status) &&
     !!req.target_user_id &&
     (
+      isMarketplaceAccepted(req) ||
       isDirectOfferAccepted(req) ||
       isAvailabilityAccepted(req)
     )
@@ -292,6 +307,11 @@ const displayStatus = (req: SwapRequest): DisplayStatus => {
   return req.status;
 };
 
+const isActionableReceived = (req: SwapRequest) =>
+  isOpen(req) || isDirectOfferForMe(req);
+
+const receivedActionableCount = received.filter(isActionableReceived).length;
+
   const firstName = (s?: string | null) => (s ?? '').trim().split(' ')[0] || 'Alguém';
 
 async function acceptDirectOffer(req: SwapRequest) {
@@ -451,11 +471,11 @@ async function acceptDirectOffer(req: SwapRequest) {
             }`}
           >
             {tab === 'recebidas' ? 'Disponíveis' : 'Minhas Trocas'}
-            {tab === 'recebidas' && received.length > 0 && (
-              <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded-full ml-1">
-                {received.length}
-              </span>
-            )}
+            {tab === 'recebidas' && receivedActionableCount > 0 && (
+  <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded-full ml-1">
+    {receivedActionableCount}
+  </span>
+)}
           </button>
         ))}
       </div>

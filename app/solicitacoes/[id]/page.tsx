@@ -109,21 +109,23 @@ function isAvailabilityAccepted(r: ShiftSwapDetail) {
   return r.reason === '__offer_via_disponibilidade__';
 }
 
+function isPendingStatus(status: string) {
+  return status === 'pendente' || status === 'pending';
+}
+
 function isMarketplaceOpen(r: ShiftSwapDetail) {
   return (
-    (r.status === 'pendente' || r.status === 'pending') &&
-    !r.target_user_id
+    isPendingStatus(r.status) &&
+    !r.target_user_id &&
+    r.reason !== '__offer_via_disponibilidade__'
   );
 }
 
 function isAwaitingCoordination(r: ShiftSwapDetail) {
   return (
-    (r.status === 'pendente' || r.status === 'pending') &&
+    isPendingStatus(r.status) &&
     !!r.target_user_id &&
-    (
-      isDirectOfferAccepted(r) ||
-      isAvailabilityAccepted(r)
-    )
+    r.reason !== '__direct_offer__'
   );
 }
 
@@ -339,13 +341,53 @@ if (isDirectOfferPending(request)) {
       return;
     }
 
-    setSaving(true);
-    setErrorMsg(null);
-    
-    try {
-      // 1. Atualiza o status da solicitação para 'aprovado'
-            // ✅ Só aprova se ainda estiver pendente (evita corrida com outra aba/admin)
-      const { data: updatedReq, error: reqError } = await supabase
+setSaving(true);
+setErrorMsg(null);
+
+try {
+  // ✅ Checagem preventiva: avisa se a confirmação gerar conflito de plantão
+  if (request.shift?.date && request.shift?.period) {
+    const { data: conflictRows, error: conflictError } = await supabase
+      .from('shifts')
+      .select(`
+        id,
+        hospital_id,
+        date,
+        period,
+        hospitals(name)
+      `)
+      .eq('doctor_user_id', finalDoctorId)
+      .eq('date', request.shift.date)
+      .eq('period', request.shift.period)
+      .neq('id', request.from_shift_id);
+
+    if (conflictError) throw conflictError;
+
+    const conflicts = (conflictRows ?? []).map((row: any) => ({
+      ...row,
+      hospitals: Array.isArray(row.hospitals) ? row.hospitals[0] : row.hospitals,
+    }));
+
+    if (conflicts.length > 0) {
+      const hospitalNames = conflicts
+        .map((row: any) => row.hospitals?.name ?? 'outro hospital')
+        .join(', ');
+
+      const shouldContinue = window.confirm(
+        `Atenção: este médico já está escalado em ${hospitalNames} nesse mesmo dia e período.\n\n` +
+        `Isso pode representar um conflito de escala. Deseja confirmar mesmo assim?`
+      );
+
+      if (!shouldContinue) {
+        setSaving(false);
+        return;
+      }
+    }
+  }
+
+  // 1. Atualiza o status da solicitação para 'aprovado'
+        // ✅ Só aprova se ainda estiver pendente (evita corrida com outra aba/admin)
+  const { data: updatedReq, error: reqError } = await supabase
         .from('shift_swap_requests')
         .update({ status: 'aprovado', target_user_id: finalDoctorId })
         .eq('id', request.id)

@@ -172,17 +172,34 @@ function isAvailabilityAccepted(r: ShiftSwapNotification) {
   return r.reason === '__offer_via_disponibilidade__';
 }
 
+function isPendingStatus(status: string) {
+  return status === 'pendente' || status === 'pending';
+}
+
 function isMarketplaceOpen(r: ShiftSwapNotification) {
   return (
-    (r.status === 'pendente' || r.status === 'pending') &&
-    !r.target_user_id
+    isPendingStatus(r.status) &&
+    !r.target_user_id &&
+    r.reason !== '__offer_via_disponibilidade__'
+  );
+}
+
+function isMarketplaceAccepted(r: ShiftSwapNotification) {
+  return (
+    isPendingStatus(r.status) &&
+    !!r.target_user_id &&
+    r.reason !== '__direct_offer__' &&
+    r.reason !== '__direct_offer__accepted' &&
+    r.reason !== '__offer_via_disponibilidade__'
   );
 }
 
 function isAwaitingCoordination(r: ShiftSwapNotification) {
   return (
-    (r.status === 'pendente' || r.status === 'pending') &&
+    isPendingStatus(r.status) &&
+    !!r.target_user_id &&
     (
+      isMarketplaceAccepted(r) ||
       isDirectOfferAccepted(r) ||
       isAvailabilityAccepted(r)
     )
@@ -295,10 +312,18 @@ if (awaitingError) {
 }
 
 const awaitingConfirmationCount = (awaitingRows ?? []).filter((row: any) => {
-  return (
-    row.reason === '__direct_offer__accepted' ||
-    row.reason === '__offer_via_disponibilidade__'
-  );
+  const marketplaceAccepted =
+  row.status === 'pendente' &&
+  !!row.target_user_id &&
+  row.reason !== '__direct_offer__' &&
+  row.reason !== '__direct_offer__accepted' &&
+  row.reason !== '__offer_via_disponibilidade__';
+
+return (
+  marketplaceAccepted ||
+  row.reason === '__direct_offer__accepted' ||
+  row.reason === '__offer_via_disponibilidade__'
+);
 }).length;
 
 const c = awaitingConfirmationCount;

@@ -146,7 +146,21 @@ function isAvailabilityAccepted(op: SwapOpportunity) {
 }
 
 function isMarketplaceOpen(op: SwapOpportunity) {
-  return isPendingStatus(op.status) && !op.target_user_id;
+  return (
+    isPendingStatus(op.status) &&
+    !op.target_user_id &&
+    op.reason !== '__offer_via_disponibilidade__'
+  );
+}
+
+function isMarketplaceAccepted(op: SwapOpportunity) {
+  return (
+    isPendingStatus(op.status) &&
+    !!op.target_user_id &&
+    op.reason !== '__direct_offer__' &&
+    op.reason !== '__direct_offer__accepted' &&
+    op.reason !== '__offer_via_disponibilidade__'
+  );
 }
 
 function isAwaitingCoordination(op: SwapOpportunity) {
@@ -154,6 +168,7 @@ function isAwaitingCoordination(op: SwapOpportunity) {
     isPendingStatus(op.status) &&
     !!op.target_user_id &&
     (
+      isMarketplaceAccepted(op) ||
       isDirectOfferAccepted(op) ||
       isAvailabilityAccepted(op)
     )
@@ -177,31 +192,45 @@ function getMyShiftSwapStatus(
   const req = mySwapRequests.find(r => r.shift_id === shiftId);
   if (!req) return null;
 
-  const awaitingCoordination =
-    isPendingStatus(req.status) &&
-    !!req.target_user_id &&
-    (
-      req.reason === '__direct_offer__accepted' ||
-      req.reason === '__offer_via_disponibilidade__'
-    );
+  const marketplaceAccepted =
+  isPendingStatus(req.status) &&
+  !!req.target_user_id &&
+  req.reason !== '__direct_offer__' &&
+  req.reason !== '__direct_offer__accepted' &&
+  req.reason !== '__offer_via_disponibilidade__';
+
+const awaitingCoordination =
+  isPendingStatus(req.status) &&
+  !!req.target_user_id &&
+  (
+    marketplaceAccepted ||
+    req.reason === '__direct_offer__accepted' ||
+    req.reason === '__offer_via_disponibilidade__'
+  );
 
   if (awaitingCoordination) {
     return {
+      requestId: req.id,
       type: 'awaiting_coordination' as const,
       label: 'Oferta aceita. Aguardando coordenação',
+      canCancel: false,
     };
   }
 
   if (req.reason === '__direct_offer__') {
     return {
+      requestId: req.id,
       type: 'direct_offer_pending' as const,
       label: 'Oferta direcionada pendente',
+      canCancel: true,
     };
   }
 
   return {
+    requestId: req.id,
     type: 'marketplace_open' as const,
     label: 'Anunciado',
+    canCancel: true,
   };
 }
 
@@ -592,24 +621,50 @@ const confirmed = window.confirm(confirmMessage);
   setProcessingId(swapId);
 
   try {
-    const { error } = await supabase.rpc('claim_shift_swap', {
-      swap_id: swapId,
-      candidate_id: userId
-    });
+    if (isDirectOffer) {
+  const { data, error } = await supabase
+    .from('shift_swap_requests')
+    .update({
+      reason: '__direct_offer__accepted',
+      status: 'pendente',
+    })
+    .eq('id', swapId)
+    .eq('status', 'pendente')
+    .eq('target_user_id', userId)
+    .eq('reason', '__direct_offer__')
+    .select('id')
+    .maybeSingle();
 
-    if (error) {
-      const msg = error.message;
-      if (msg.includes('não está mais disponível')) {
-        toast.error('Putz! Outro médico acabou de pegar esse plantão.');
-      } else if (msg.includes('própria troca')) {
-        toast.error('Você não pode aceitar uma troca que você mesmo criou.');
-      } else {
-        toast.error('Erro ao processar: ' + msg);
-      }
-      throw error;
+  if (error) throw error;
+
+  if (!data) {
+    toast.error('Essa oferta direcionada não está mais disponível para você.');
+    return;
+  }
+
+  toast.success('Oferta aceita! Agora falta a coordenação confirmar.');
+} else {
+  const { error } = await supabase.rpc('claim_shift_swap', {
+    swap_id: swapId,
+    candidate_id: userId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+
+    if (msg.includes('não está mais disponível')) {
+      toast.error('Putz! Outro médico acabou de pegar esse plantão.');
+    } else if (msg.includes('própria troca')) {
+      toast.error('Você não pode aceitar uma troca que você mesmo criou.');
+    } else {
+      toast.error('Erro ao processar: ' + msg);
     }
 
-    toast.success('Interesse registrado! Aguardando aprovação da coordenação.');
+    throw error;
+  }
+
+  toast.success('Interesse registrado! Aguardando aprovação da coordenação.');
+}
 
     if (hospitals.length) {
       await loadMonthData(hospitals.map(h => h.id), userId, year, month);
@@ -670,11 +725,19 @@ const confirmed = window.confirm(confirmMessage);
     setLoadingDoctors(true);
 
     try {
-      const occupiedIds = new Set(
-        (selectedDateTeam ?? [])
-          .map((s) => s.doctor_user_id)
-          .filter(Boolean)
-      );
+      const currentShift = selectedDateTeam.find((s) => s.id === passShiftId);
+
+if (!currentShift) {
+  toast.error('Não foi possível identificar o plantão selecionado.');
+  return;
+}
+
+const occupiedIds = new Set(
+  (selectedDateTeam ?? [])
+    .filter((s) => s.period === currentShift.period)
+    .map((s) => s.doctor_user_id)
+    .filter(Boolean)
+);
 
       const { data, error } = await supabase
         .from('hospital_users')
@@ -749,6 +812,52 @@ const confirmed = window.confirm(confirmMessage);
       setProcessingId(null);
     }
   }
+async function handleCancelSwapRequest(requestId: number) {
+  if (!userId) return;
+
+  const confirmed = window.confirm(
+    'Deseja cancelar este anúncio de plantão? Ele deixará de aparecer para outros médicos.'
+  );
+
+  if (!confirmed) return;
+
+  setProcessingId(requestId);
+
+  try {
+    const { data, error } = await supabase
+      .from('shift_swap_requests')
+      .update({
+        status: 'cancelado',
+      })
+      .eq('id', requestId)
+      .eq('requester_user_id', userId)
+      .eq('status', 'pendente')
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      toast.error('Esse anúncio não pode mais ser cancelado por aqui.');
+      return;
+    }
+
+    toast.success('Anúncio cancelado com sucesso.');
+
+    if (hospitals.length) {
+      await loadMonthData(hospitals.map(h => h.id), userId, year, month);
+    }
+
+    if (selectedDate && activeDayHospitalId) {
+      await loadDayTeam(activeDayHospitalId, selectedDate);
+    }
+  } catch (err: any) {
+    console.error(err);
+    toast.error(err?.message ?? 'Erro ao cancelar anúncio.');
+  } finally {
+    setProcessingId(null);
+  }
+}
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
@@ -1159,17 +1268,29 @@ const shiftEnded = isExpiredShift({
                             </div>
 
                             {isMe && mySwapStatus ? (
-  <span
-    className={`shrink-0 text-[10px] px-2.5 py-1 rounded-xl font-bold text-center leading-tight ${
-      mySwapStatus.type === 'awaiting_coordination'
-        ? 'bg-amber-100 text-amber-700'
-        : mySwapStatus.type === 'direct_offer_pending'
-          ? 'bg-blue-100 text-blue-700'
-          : 'bg-slate-100 text-slate-600'
-    }`}
-  >
-    {mySwapStatus.label}
-  </span>
+  <div className="shrink-0 flex flex-col items-end gap-1">
+    <span
+      className={`text-[10px] px-2.5 py-1 rounded-xl font-bold text-center leading-tight ${
+        mySwapStatus.type === 'awaiting_coordination'
+          ? 'bg-amber-100 text-amber-700'
+          : mySwapStatus.type === 'direct_offer_pending'
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-slate-100 text-slate-600'
+      }`}
+    >
+      {mySwapStatus.label}
+    </span>
+
+    {mySwapStatus.canCancel && (
+      <button
+        onClick={() => handleCancelSwapRequest(mySwapStatus.requestId)}
+        disabled={processingId === mySwapStatus.requestId}
+        className="text-[10px] px-2.5 py-1 rounded-xl border border-red-200 text-red-600 bg-white hover:bg-red-50 transition disabled:opacity-60"
+      >
+        {processingId === mySwapStatus.requestId ? 'Cancelando...' : 'Cancelar anúncio'}
+      </button>
+    )}
+  </div>
 ) : isMe ? (
   <button
     onClick={() => openPassOptions(s.id)}
