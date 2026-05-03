@@ -69,6 +69,19 @@ type OtherHospitalAlert = {
   awaiting_confirmation_count: number;
 };
 
+type DailyShiftRow = {
+  id: number;
+  date: string;
+  period: 'manha' | 'tarde' | 'noite' | '24h';
+  doctor_user_id: string | null;
+  is_chief: boolean;
+  badge: string | null;
+  doctor?: {
+    full_name: string | null;
+    email: string | null;
+  } | null;
+};
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -91,6 +104,11 @@ const [conflictCount, setConflictCount] = useState(0);
 const [conflictTargetMonth, setConflictTargetMonth] = useState<number | null>(null);
 const [conflictTargetYear, setConflictTargetYear] = useState<number | null>(null);
 
+const [showDailyMessageModal, setShowDailyMessageModal] = useState(false);
+const [dailyMessageDate, setDailyMessageDate] = useState(() => getTomorrowYMD());
+const [dailyMessageLoading, setDailyMessageLoading] = useState(false);
+const [dailyMessageText, setDailyMessageText] = useState('');
+
 // 📣 Comunicação admin
   const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
   const [messageTitle, setMessageTitle] = useState('');
@@ -101,20 +119,20 @@ const [conflictTargetYear, setConflictTargetYear] = useState<number | null>(null
   const [showMessageModal, setShowMessageModal] = useState(false);
 
   // ✅ CORREÇÃO DE DATA: Garante que o fuso horário não altere o dia
-  function formatDateBR(dateStr: string) {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const d = new Date(year, month - 1, day);
-    
-    if (Number.isNaN(d.getTime())) return dateStr;
-    
-    return d.toLocaleDateString('pt-BR', { 
-      weekday: 'short', 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    });
-  }
+function formatDateBR(dateStr: string, shortWeekday = true) {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  
+  if (Number.isNaN(d.getTime())) return dateStr;
+  
+  return d.toLocaleDateString('pt-BR', { 
+    weekday: shortWeekday ? 'short' : 'long', 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: 'numeric' 
+  });
+}
 
   function formatDateTimeBR(dateStr: string) {
     const d = new Date(dateStr);
@@ -216,6 +234,107 @@ function visualStatusChipClass(r: ShiftSwapNotification) {
   if (isDirectOfferPending(r)) return 'bg-blue-50 text-blue-700 border-blue-200';
   if (isAwaitingCoordination(r)) return 'bg-sky-50 text-sky-700 border-sky-200';
   return statusChipClass(r.status);
+}
+
+function getTomorrowYMD() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(
+    tomorrow.getDate()
+  ).padStart(2, '0')}`;
+}
+
+function getDoctorDisplayName(row: DailyShiftRow) {
+  return row.doctor?.full_name ?? row.doctor?.email ?? 'Médico não informado';
+}
+
+function isShiftChief(row: DailyShiftRow) {
+  if (row.is_chief === true) return true;
+
+  const badge = row.badge?.toLowerCase().trim() ?? '';
+
+  return (
+    badge.includes('chefe') ||
+    badge.includes('coord') ||
+    badge.includes('coordenador') ||
+    badge === 'ch'
+  );
+}
+
+function buildDailyShiftMessage(rows: DailyShiftRow[], date: string, hospital: string) {
+  const grouped: Record<'manha' | 'tarde' | 'noite' | '24h', DailyShiftRow[]> = {
+    manha: [],
+    tarde: [],
+    noite: [],
+    '24h': [],
+  };
+
+  for (const row of rows) {
+    grouped[row.period]?.push(row);
+  }
+
+  const sortChiefFirst = (items: DailyShiftRow[]) => {
+    return [...items].sort((a, b) => {
+      const aChief = isShiftChief(a);
+      const bChief = isShiftChief(b);
+
+      if (aChief && !bChief) return -1;
+      if (!aChief && bChief) return 1;
+
+      return getDoctorDisplayName(a).localeCompare(getDoctorDisplayName(b), 'pt-BR', {
+        sensitivity: 'base',
+      });
+    });
+  };
+
+  const doctorLine = (item: DailyShiftRow) => {
+    const name = getDoctorDisplayName(item);
+    const labels: string[] = [];
+
+    if (isShiftChief(item)) {
+      labels.push('Chefe de plantão');
+    }
+
+    const badge = item.badge?.trim();
+
+    if (badge) {
+      labels.push(badge.toUpperCase());
+    }
+
+    if (labels.length === 0) {
+      return `• ${name}`;
+    }
+
+    return `• ${name} - ${labels.join(' - ')}`;
+  };
+
+  const section = (title: string, items: DailyShiftRow[]) => {
+    if (items.length === 0) {
+      return `${title}\n• Sem plantonista cadastrado`;
+    }
+
+    const sortedItems = sortChiefFirst(items);
+
+    return `${title}\n${sortedItems.map(doctorLine).join('\n')}`;
+  };
+
+return [
+  `${formatDateBR(date, false).replace(/^./, (c) => c.toUpperCase())}:`,
+  `🏥 ${hospital}`,
+  '',
+  section('*Manhã*', grouped.manha),
+  '',
+  section('*Tarde*', grouped.tarde),
+  '',
+  section('*Noite*', grouped.noite),
+  grouped['24h'].length > 0 ? '' : null,
+  grouped['24h'].length > 0 ? section('*24h*', grouped['24h']) : null,
+  '',
+  'Em caso de inconsistências, favor comunicar a coordenação.',
+]
+  .filter(Boolean)
+  .join('\n');
 }
 
 const loadDoctors = useCallback(async (hId: string) => {
@@ -547,6 +666,62 @@ const loadSwapRequests = useCallback(async (hId: string) => {
   }
 }, []);
 
+const generateDailyShiftMessage = useCallback(
+  async (date?: string) => {
+    const targetDate = date ?? dailyMessageDate;
+
+    if (!hospitalId) {
+      alert('Hospital não identificado.');
+      return;
+    }
+
+    if (!targetDate) {
+      alert('Selecione uma data.');
+      return;
+    }
+
+    setDailyMessageLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select(`
+          id,
+          date,
+          period,
+          doctor_user_id,
+          is_chief,
+          badge,
+          doctor:doctor_user_id(full_name, email)
+        `)
+        .eq('hospital_id', hospitalId)
+        .eq('date', targetDate)
+        .in('period', ['manha', 'tarde', 'noite', '24h'])
+        .order('period', { ascending: true });
+
+      if (error) {
+        console.error('Erro ao carregar escala do dia:', error);
+        alert('Não foi possível carregar a escala do dia.');
+        return;
+      }
+
+      const formattedRows = (data ?? []).map((item: any) => ({
+        ...item,
+        doctor: Array.isArray(item.doctor) ? item.doctor[0] : item.doctor,
+      }));
+
+      const message = buildDailyShiftMessage(formattedRows as DailyShiftRow[], targetDate, hospitalName);
+      setDailyMessageText(message);
+    } catch (e) {
+      console.error('Erro ao gerar mensagem diária:', e);
+      alert('Erro ao gerar mensagem diária.');
+    } finally {
+      setDailyMessageLoading(false);
+    }
+  },
+  [dailyMessageDate, hospitalId, hospitalName]
+);
+
 useEffect(() => {
   async function init() {
     setLoading(true);
@@ -676,6 +851,21 @@ void loadConflictCount(user.id);
     supabase.removeChannel(channel);
   };
 }, [hospitalId, loadAvailabilityData, loadSwapRequests]);
+
+  async function copyDailyShiftMessage() {
+    if (!dailyMessageText.trim()) {
+      alert('Gere a mensagem primeiro.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(dailyMessageText);
+      alert('Mensagem copiada!');
+    } catch (e) {
+      console.error('Erro ao copiar mensagem:', e);
+      alert('Não foi possível copiar automaticamente. Selecione o texto e copie manualmente.');
+    }
+  }
 
   async function sendAdminMessage() {
     if (!messageTitle.trim() || !messageBody.trim()) {
@@ -868,13 +1058,26 @@ void loadConflictCount(user.id);
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="lg:col-span-2 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
   <button 
     onClick={() => router.push('/escala')} 
     className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
   >
     <h2 className="text-sm font-semibold mb-1">Escala mensal</h2>
     <p className="text-[11px] text-slate-500">Visualize e edite a escala de plantões.</p>
+  </button>
+
+  <button
+    onClick={() => {
+      setShowDailyMessageModal(true);
+      void generateDailyShiftMessage(dailyMessageDate);
+    }}
+    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
+  >
+    <h2 className="text-sm font-semibold mb-1">Mensagem do plantão</h2>
+    <p className="text-[11px] text-slate-500">
+      Gere a mensagem diária dos plantonistas por turno.
+    </p>
   </button>
 
   <button
@@ -905,6 +1108,7 @@ void loadConflictCount(user.id);
                  <li>Peça para os médicos manterem a <strong>disponibilidade atualizada</strong> no app.</li>
                  <li>Acompanhe o <strong>Relatório de pagamento</strong> para o fechamento do mês.</li>
                  <li>Use as <strong>notificações</strong> ao lado para montar a escala mais rápido.</li>
+                 <li>Use a <strong>Mensagem do plantão</strong> para gerar o texto diário sem digitar nomes manualmente.</li>
                </ul>
             </div>
           </section>
@@ -1086,6 +1290,79 @@ void loadConflictCount(user.id);
 </section>
         </div>
            </main>
+
+      {showDailyMessageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-sm font-semibold">Mensagem do plantão</h2>
+                <p className="text-[11px] text-slate-500">
+                  Gere automaticamente a mensagem diária com os plantonistas separados por turno.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowDailyMessageModal(false)}
+                className="text-sm text-slate-500 hover:text-slate-800"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                <input
+                  type="date"
+                  value={dailyMessageDate}
+                  onChange={(e) => {
+                    setDailyMessageDate(e.target.value);
+                    void generateDailyShiftMessage(e.target.value);
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+
+                <button
+                  onClick={() => generateDailyShiftMessage()}
+                  disabled={dailyMessageLoading}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {dailyMessageLoading ? 'Gerando...' : 'Gerar mensagem'}
+                </button>
+              </div>
+
+              <textarea
+                value={dailyMessageText}
+                onChange={(e) => setDailyMessageText(e.target.value)}
+                rows={14}
+                placeholder="A mensagem gerada aparecerá aqui..."
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm resize-none"
+              />
+
+              <p className="text-[11px] text-slate-500">
+                A mensagem é editável antes de copiar. Confira rapidamente e envie no grupo da equipe.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t px-5 py-4">
+              <button
+                onClick={() => setShowDailyMessageModal(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={copyDailyShiftMessage}
+                disabled={!dailyMessageText.trim()}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                Copiar mensagem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showMessageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
