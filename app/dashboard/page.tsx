@@ -320,20 +320,35 @@ function buildDailyShiftMessage(rows: DailyShiftRow[], date: string, hospital: s
   };
 
 return [
+
   `${formatDateBR(date, false).replace(/^./, (c) => c.toUpperCase())}:`,
+
   `🏥 ${hospital}`,
+
   '',
-  section('*Manhã*', grouped.manha),
+
+  section('Manhã', grouped.manha),
+
   '',
-  section('*Tarde*', grouped.tarde),
+
+  section('Tarde', grouped.tarde),
+
   '',
-  section('*Noite*', grouped.noite),
+
+  section('Noite', grouped.noite),
+
   grouped['24h'].length > 0 ? '' : null,
-  grouped['24h'].length > 0 ? section('*24h*', grouped['24h']) : null,
+
+  grouped['24h'].length > 0 ? section('24h', grouped['24h']) : null,
+
   '',
+
   'Em caso de inconsistências, favor comunicar a coordenação.',
+
 ]
+
   .filter(Boolean)
+
   .join('\n');
 }
 
