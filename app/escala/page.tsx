@@ -38,7 +38,7 @@ function monthStartISO(year: number, monthIndex: number) {
 function nextMonthStartISO(year: number, monthIndex: number) {
   // retorna início do próximo mês (exclusive)
   const y = monthIndex === 11 ? year + 1 : year;
-  const m = monthIndex === 11 ? 1 : (monthIndex + 2);
+  const m = monthIndex === 11 ? 1 : monthIndex + 2;
   return `${y}-${pad2(m)}-01`;
 }
 
@@ -56,7 +56,7 @@ const PERIOD_CONFIG: {
 ];
 
 // 1. Removemos o "export default" e mudamos o nome para Content
-function EscalaMensalContent() { 
+function EscalaMensalContent() {
   const router = useRouter();
   const searchParams = useSearchParams(); // 2. Pegamos os parametros da URL
 
@@ -67,13 +67,13 @@ function EscalaMensalContent() {
 
   // 3. Lógica para definir Data Inicial (URL ou Hoje)
   const dateParam = searchParams.get('date');
-  
+
   const getInitialDate = () => {
     if (dateParam) {
       const [yStr, mStr] = dateParam.split('-'); // Espera formato YYYY-MM-DD
       const y = parseInt(yStr, 10);
       const m = parseInt(mStr, 10);
-      
+
       // Valida se vieram números reais
       if (!isNaN(y) && !isNaN(m)) {
         // Retorna o mês (m-1 pois no JS janeiro é 0)
@@ -147,7 +147,7 @@ function EscalaMensalContent() {
         alert(
           json?.detail
             ? `${json.error} — ${json.detail}`
-            : (json?.error ?? 'Falha ao gerar PDF da escala.')
+            : json?.error ?? 'Falha ao gerar PDF da escala.'
         );
         return;
       }
@@ -190,7 +190,7 @@ function EscalaMensalContent() {
     const matrix: (number | null)[][] = [];
     let week: (number | null)[] = [];
 
-    let weekdayOfFirst = first.getDay(); 
+    let weekdayOfFirst = first.getDay();
 
     // Preenche dias vazios antes do primeiro dia
     for (let i = 0; i < weekdayOfFirst; i++) {
@@ -231,9 +231,9 @@ function EscalaMensalContent() {
     if (!error && data) {
       const formattedShifts = data.map((shift: any) => ({
         ...shift,
-        users: Array.isArray(shift.users) ? shift.users[0] : shift.users
+        users: Array.isArray(shift.users) ? shift.users[0] : shift.users,
       }));
-      
+
       setShifts(formattedShifts as ShiftRow[]);
     }
   }
@@ -277,7 +277,9 @@ function EscalaMensalContent() {
 
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         router.push('/login');
@@ -538,16 +540,18 @@ function EscalaMensalContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-sm text-slate-600">Carregando escala...</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Carregando escala...</p>
+        </div>
       </div>
     );
   }
 
   if (!hospitalId) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="bg-white border rounded-xl px-4 py-3 text-sm">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 text-sm text-slate-600 shadow-sm">
           Não foi possível identificar seu hospital. Verifique seu cadastro.
         </div>
       </div>
@@ -555,15 +559,15 @@ function EscalaMensalContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex">
+    <div className="min-h-screen bg-slate-50 flex">
       {hospitalShortcuts.length > 1 && (
-        <aside className="hidden xl:flex w-56 shrink-0 border-r border-slate-200 bg-white/80 backdrop-blur px-3 py-4 sticky top-0 h-screen overflow-y-auto">
-          <div className="w-full space-y-3">
+        <aside className="hidden xl:flex w-60 shrink-0 border-r border-slate-100 bg-white px-4 py-5 sticky top-0 h-screen overflow-y-auto">
+          <div className="w-full space-y-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
                 Hospitais
               </p>
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="mt-1 text-[11px] font-semibold text-slate-400">
                 Atalho para o mesmo mês
               </p>
             </div>
@@ -579,17 +583,17 @@ function EscalaMensalContent() {
                     onClick={() => {
                       if (!active) handleSwitchHospital(h.id);
                     }}
-                    className={`w-full text-left rounded-xl border px-3 py-2 transition ${
+                    className={`w-full rounded-2xl border px-3 py-3 text-left transition active:scale-[0.99] ${
                       active
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
+                        : 'border-slate-100 bg-slate-50 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <p className="text-xs font-semibold leading-tight">
+                    <p className="text-xs font-black leading-tight">
                       {h.name}
                     </p>
                     {active && (
-                      <p className="text-[10px] text-slate-300 mt-0.5">
+                      <p className="mt-1 text-[10px] font-semibold text-slate-300">
                         Atual
                       </p>
                     )}
@@ -602,27 +606,54 @@ function EscalaMensalContent() {
       )}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="bg-white border-b">
-          <div className="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center">
-            <div>
-              <h1 className="text-lg font-semibold">Escala mensal</h1>
-              <p className="text-[11px] text-slate-500">
-                {hospitalName}
-                {userName ? ` • Logado como ${userName}` : ''}
-              </p>
+        <header className="rounded-b-[28px] bg-white shadow-sm">
+          <div className="mx-auto flex max-w-[1500px] items-start px-6 py-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center">
+              <img
+                src="/medturn-logo-transparent.png"
+                alt="MedTurn"
+                className="h-20 w-20 object-contain"
+              />
             </div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-xs border px-3 py-1.5 rounded-lg"
-            >
-              Voltar
-            </button>
+
+            <div className="ml-5 flex flex-1 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="pt-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
+                  MedTurn • Escala mensal
+                </p>
+
+                <h1 className="mt-1 text-3xl font-black tracking-tighter text-slate-950">
+                  {hospitalName}
+                </h1>
+
+                <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                  {userName ? `Logado como: ${userName}` : 'Escala do hospital'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+                >
+                  Voltar
+                </button>
+
+                <button
+                  onClick={onGenerateScalePDF}
+                  disabled={!hospitalId || pdfLoading}
+                  className="rounded-2xl bg-slate-950 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95 disabled:opacity-60"
+                >
+                  {pdfLoading ? 'Gerando PDF...' : 'Baixar PDF'}
+                </button>
+              </div>
+            </div>
           </div>
         </header>
 
-        <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+        <main className="max-w-[1500px] mx-auto w-full p-6 space-y-5">
           {hospitalShortcuts.length > 1 && (
-            <div className="xl:hidden bg-white border rounded-xl px-3 py-2 overflow-x-auto">
+            <div className="xl:hidden rounded-[28px] border border-slate-100 bg-white px-4 py-3 shadow-sm overflow-x-auto">
               <div className="flex gap-2 min-w-max">
                 {hospitalShortcuts.map((h) => {
                   const active = h.id === hospitalId;
@@ -634,10 +665,10 @@ function EscalaMensalContent() {
                       onClick={() => {
                         if (!active) handleSwitchHospital(h.id);
                       }}
-                      className={`text-[11px] px-3 py-1.5 rounded-full border whitespace-nowrap ${
+                      className={`rounded-2xl border px-3 py-2 text-[11px] font-black whitespace-nowrap transition active:scale-95 ${
                         active
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-700 border-slate-200'
+                          ? 'border-slate-950 bg-slate-950 text-white'
+                          : 'border-slate-100 bg-slate-50 text-slate-700'
                       }`}
                     >
                       {h.name}
@@ -648,33 +679,46 @@ function EscalaMensalContent() {
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => handleMonthChange(-1)}
-                className="text-sm px-3 py-1 border rounded-lg"
-              >
-                ◀
-              </button>
+          <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+                  Calendário
+                </p>
 
-              <h2 className="text-xl font-semibold capitalize text-center">
-                {monthName} {year}
-              </h2>
+                <h2 className="mt-1 text-2xl font-black capitalize tracking-tight text-slate-950">
+                  {monthName} {year}
+                </h2>
+              </div>
 
-              <button
-                onClick={() => handleMonthChange(1)}
-                className="text-sm px-3 py-1 border rounded-lg"
-              >
-                ▶
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleMonthChange(-1)}
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+                >
+                  ◀
+                </button>
+
+                <button
+                  onClick={() => handleMonthChange(1)}
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+                >
+                  ▶
+                </button>
+              </div>
             </div>
 
-            {/* Barra de cópia de mês */}
-            <div className="mt-2 flex flex-col md:flex-row md:items-center md:justify-between gap-2 border rounded-xl bg-white px-3 py-2">
-              <span className="text-[11px] text-slate-600">
-                Copiar escala deste mês para outro mês (mesmo padrão de dias).
-              </span>
-              <div className="flex items-center gap-2">
+            <div className="mt-5 flex flex-col gap-3 rounded-[28px] bg-slate-50 px-4 py-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-black text-slate-800">
+                  Copiar escala mensal
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  Copie a escala deste mês para outro mês mantendo o mesmo padrão de dias.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   type="month"
                   value={copyTargetMonth}
@@ -683,45 +727,40 @@ function EscalaMensalContent() {
                     setCopyError(null);
                     setCopySuccess(null);
                   }}
-                  className="border rounded-lg px-2 py-1.5 text-xs"
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#40C0A2]"
                 />
+
                 <button
                   onClick={handleCopyMonth}
                   disabled={copyLoading || !hospitalId}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 disabled:opacity-60"
                 >
-                  {copyLoading ? 'Copiando...' : 'Copiar escala para mês'}
-                </button>
-
-                <button
-                  onClick={onGenerateScalePDF}
-                  disabled={!hospitalId || pdfLoading}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {pdfLoading ? 'Gerando PDF...' : 'Baixar PDF da escala'}
+                  {copyLoading ? 'Copiando...' : 'Copiar'}
                 </button>
               </div>
-              {pdfLoading && (
-                <p className="text-[11px] text-slate-500 md:ml-auto">
-                  Preparando o PDF da escala. Isso pode levar alguns segundos.
-                </p>
-              )}
             </div>
 
+            {pdfLoading && (
+              <p className="mt-3 text-[11px] font-semibold text-slate-400">
+                Preparando o PDF da escala. Isso pode levar alguns segundos.
+              </p>
+            )}
+
             {copyError && (
-              <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
+              <div className="mt-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
                 {copyError}
               </div>
             )}
+
             {copySuccess && (
-              <div className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg text-xs">
+              <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
                 {copySuccess}
               </div>
             )}
           </div>
 
           {/* Cabeçalho dos dias da semana */}
-          <div className="grid grid-cols-7 text-center font-semibold text-slate-600 mb-2 mt-2 text-[11px]">
+          <div className="grid grid-cols-7 px-1 text-center text-[11px] font-black uppercase tracking-wider text-slate-400">
             <div>Dom</div>
             <div>Seg</div>
             <div>Ter</div>
@@ -761,11 +800,13 @@ function EscalaMensalContent() {
                 return (
                   <div
                     key={`${wi}-${di}`}
-                    className={`min-h-[140px] bg-white p-2 rounded-lg border text-xs flex flex-col ${
+                    className={`min-h-[150px] rounded-[22px] border border-slate-100 bg-white p-2.5 text-xs shadow-sm flex flex-col ${
                       day ? '' : 'opacity-40'
                     }`}
                   >
-                    <div className="font-bold mb-1">{day ?? ''}</div>
+                    <div className="mb-1 font-black text-slate-800">
+                      {day ?? ''}
+                    </div>
 
                     {/* Linha de contadores por período */}
                     {day && (
@@ -800,9 +841,9 @@ function EscalaMensalContent() {
                           if (shiftsInPeriod.length === 0) return null;
 
                           return (
-                            <div 
-                              key={cfg.key} 
-                              className="flex flex-col rounded border border-slate-200 overflow-hidden bg-white shadow-sm"
+                            <div
+                              key={cfg.key}
+                              className="flex flex-col rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm"
                             >
                               {/* Cabeçalho do Turno */}
                               <div className={`text-[9px] font-bold px-1.5 py-0.5 border-b uppercase tracking-wide ${groupStyles[cfg.key]}`}>
@@ -813,13 +854,13 @@ function EscalaMensalContent() {
                               <div className="flex flex-col px-1.5 py-1 gap-0.5">
                                 {shiftsInPeriod.map((s) => (
                                   <div key={s.id} className="flex items-start gap-1">
-                                    <span 
+                                    <span
                                       className="text-[10px] text-slate-700 font-medium leading-tight break-words flex-1"
                                       title={s.users?.full_name ?? 'Sem nome'}
                                     >
                                       {s.users?.full_name ?? 'Sem nome'}
                                     </span>
-                                    
+
                                     {/* Badges (Badge custom + CH) */}
                                     <div className="flex items-center gap-1 shrink-0 mt-0.5">
                                       {/* Badge custom (só se tiver valor) */}
@@ -856,7 +897,7 @@ function EscalaMensalContent() {
                         onClick={() =>
                           router.push(`/escala/editar?date=${iso}`)
                         }
-                        className="text-[10px] text-slate-500 underline mt-auto pt-2"
+                        className="mt-auto pt-2 text-left text-[10px] font-black uppercase tracking-wider text-[#40C0A2] hover:text-[#1E7564]"
                       >
                         + editar / adicionar
                       </button>
@@ -875,7 +916,7 @@ function EscalaMensalContent() {
 // Componente Wrapper para lidar com o Suspense
 export default function EscalaMensalPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-100 flex items-center justify-center">Carregando calendário...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center">Carregando calendário...</div>}>
       <EscalaMensalContent />
     </Suspense>
   );

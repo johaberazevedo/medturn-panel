@@ -87,60 +87,102 @@ function SelecionarHospitalContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-sm text-slate-600">Carregando hospitais...</p>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Carregando hospitais...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <p className="text-[11px] uppercase text-slate-500">MedTurn</p>
-          <h1 className="text-xl font-semibold">Selecionar hospital</h1>
-          <p className="text-[11px] text-slate-500">
-            Escolha qual hospital você quer gerenciar agora.
-          </p>
+    <div className="min-h-screen bg-slate-50">
+      <header className="rounded-b-[28px] bg-white shadow-sm">
+        <div className="mx-auto flex max-w-[1500px] items-start px-6 py-5">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center">
+            <img
+              src="/medturn-logo-transparent.png"
+              alt="MedTurn"
+              className="h-20 w-20 object-contain"
+            />
+          </div>
+
+          <div className="ml-5 flex flex-1 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="pt-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
+                MedTurn
+              </p>
+
+              <h1 className="mt-1 text-3xl font-black tracking-tighter text-slate-950">
+                Selecionar hospital
+              </h1>
+
+              <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                Escolha qual hospital você quer gerenciar agora.
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
+      <main className="mx-auto max-w-[1500px] px-6 py-6">
         {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs mb-4">
+          <div className="mb-5 rounded-[28px] border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
             {errorMsg}
           </div>
         )}
 
         {!errorMsg && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {rows.map((r) => {
-              const name = r.hospitals?.name ?? 'Hospital';
-              const roleLabel =
-                (r.is_admin ? 'Admin' : (r.role ? String(r.role) : 'Membro'));
+          <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="mb-5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+                Hospitais disponíveis
+              </p>
 
-              return (
-                <button
-                  key={r.hospital_id}
-                  onClick={() => choose(r.hospital_id)}
-                  className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h2 className="text-sm font-semibold mb-1">{name}</h2>
-                      <p className="text-[11px] text-slate-500">Acessar painel</p>
+              <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                Acessar painel
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {rows.map((r) => {
+                const name = r.hospitals?.name ?? 'Hospital';
+                const roleLabel =
+                  (r.is_admin ? 'Admin' : (r.role ? String(r.role) : 'Membro'));
+
+                return (
+                  <button
+                    key={r.hospital_id}
+                    onClick={() => choose(r.hospital_id)}
+                    className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left transition hover:border-[#40C0A2]/30 hover:bg-[#40C0A2]/5 active:scale-[0.99]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Hospital
+                        </p>
+
+                        <h3 className="mt-1 text-base font-black text-slate-900">
+                          {name}
+                        </h3>
+
+                        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                          Acessar painel administrativo deste hospital.
+                        </p>
+                      </div>
+
+                      <span className="rounded-2xl border border-slate-100 bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
+                        {roleLabel}
+                      </span>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 text-slate-600 bg-slate-50">
-                      {roleLabel}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
-        <div className="mt-6 text-[11px] text-slate-500">
+        <div className="mt-5 rounded-[28px] border border-slate-100 bg-white px-5 py-4 text-[11px] font-semibold text-slate-400 shadow-sm">
           Você poderá trocar de hospital novamente a qualquer momento pelo menu.
         </div>
       </main>
@@ -151,7 +193,15 @@ function SelecionarHospitalContent() {
 // Componente "Casca" que envolve o conteúdo em Suspense
 export default function SelecionarHospitalPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm text-slate-500">Carregando seleção...</div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">Carregando seleção...</p>
+          </div>
+        </div>
+      }
+    >
       <SelecionarHospitalContent />
     </Suspense>
   );

@@ -66,67 +66,139 @@ export default function PerfilPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 text-sm text-slate-600">
-        Carregando...
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Carregando perfil...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Header Simples */}
-      <header className="bg-white border-b px-4 py-3 flex items-center justify-between">
-        <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-800">
-          ← Voltar
-        </button>
-        <h1 className="font-semibold text-sm">Meu Perfil</h1>
-        <div className="w-10"></div> {/* Espaçador para centralizar o título */}
+    <div className="min-h-screen bg-slate-50">
+      <header className="rounded-b-[28px] bg-white shadow-sm">
+        <div className="mx-auto flex max-w-5xl items-start px-6 py-5">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center">
+            <img
+              src="/medturn-logo-transparent.png"
+              alt="MedTurn"
+              className="h-20 w-20 object-contain"
+            />
+          </div>
+
+          <div className="ml-5 flex flex-1 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="pt-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
+                MedTurn • Conta
+              </p>
+
+              <h1 className="mt-1 text-3xl font-black tracking-tighter text-slate-950">
+                Meu Perfil
+              </h1>
+
+              <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                Gerencie seus dados de acesso.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <button
+                onClick={() => router.back()}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+              >
+                Voltar
+              </button>
+
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="rounded-2xl bg-slate-950 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95"
+              >
+                Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-md mx-auto w-full px-4 py-6 space-y-6">
-        
-        {/* Cartão de Dados Pessoais */}
-        <section className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-          <h2 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Dados da Conta</h2>
-          <div>
-            <label className="text-xs text-slate-500 block">Nome</label>
-            <p className="text-sm font-medium text-slate-800">{userName}</p>
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 block">E-mail</label>
-            <p className="text-sm font-medium text-slate-800">{userEmail}</p>
+      <main className="mx-auto max-w-md px-6 py-6 space-y-5">
+        <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+            Dados da conta
+          </p>
+
+          <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+            Informações pessoais
+          </h2>
+
+          <div className="mt-5 space-y-3">
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Nome
+              </label>
+              <p className="mt-1 text-sm font-bold text-slate-800">
+                {userName}
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-slate-50 px-4 py-4">
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                E-mail
+              </label>
+              <p className="mt-1 text-sm font-bold text-slate-800 break-words">
+                {userEmail}
+              </p>
+            </div>
           </div>
         </section>
 
-        {/* Formulário de Troca de Senha */}
-        <section className="bg-white border rounded-xl p-4 shadow-sm">
-          <h2 className="text-xs font-bold uppercase text-slate-400 tracking-wider mb-4">Trocar Senha</h2>
+        <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+            Segurança
+          </p>
+
+          <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+            Trocar senha
+          </h2>
+
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            A nova senha será aplicada diretamente à sua conta de acesso.
+          </p>
           
-          <form onSubmit={handlePasswordUpdate} className="space-y-4">
+          <form onSubmit={handlePasswordUpdate} className="mt-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium mb-1 text-slate-600">Nova Senha</label>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Nova senha
+              </label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
                 placeholder="Mínimo 6 caracteres"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium mb-1 text-slate-600">Confirmar Nova Senha</label>
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Confirmar nova senha
+              </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
                 placeholder="Digite novamente"
               />
             </div>
 
             {message && (
-              <div className={`text-xs px-3 py-2 rounded-lg border ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+              <div
+                className={`rounded-2xl border px-4 py-3 text-xs font-semibold ${
+                  message.type === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-red-200 bg-red-50 text-red-700'
+                }`}
+              >
                 {message.text}
               </div>
             )}
@@ -134,13 +206,12 @@ export default function PerfilPage() {
             <button
               type="submit"
               disabled={saving || !newPassword}
-              className="w-full bg-slate-900 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95 disabled:opacity-50"
             >
-              {saving ? 'Salvando...' : 'Atualizar Senha'}
+              {saving ? 'Salvando...' : 'Atualizar senha'}
             </button>
           </form>
         </section>
-
       </main>
     </div>
   );

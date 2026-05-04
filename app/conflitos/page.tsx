@@ -271,107 +271,161 @@ function ConflitosPageContent() {
   const yearOptions = Array.from({ length: 8 }, (_, i) => currentYear - 2 + i);
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] uppercase text-slate-500">Painel do hospital</p>
-            <h1 className="text-xl font-semibold">Conflitos de escala</h1>
-            <p className="text-[11px] text-slate-500">
-              Mesmo médico, mesma data e mesmo período em hospitais diferentes.
-            </p>
+    <div className="min-h-screen bg-slate-50">
+      <header className="rounded-b-[28px] bg-white shadow-sm">
+        <div className="mx-auto flex max-w-[1500px] items-start px-6 py-5">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center">
+            <img
+              src="/medturn-logo-transparent.png"
+              alt="MedTurn"
+              className="h-20 w-20 object-contain"
+            />
           </div>
 
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-          >
-            Voltar ao dashboard
-          </button>
+          <div className="ml-5 flex flex-1 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="pt-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
+                MedTurn • Segurança
+              </p>
+
+              <h1 className="mt-1 text-3xl font-black tracking-tighter text-slate-950">
+                Conflitos de escala
+              </h1>
+
+              <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                Mesmo médico, mesma data e mesmo período em hospitais diferentes.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+              >
+                Voltar ao dashboard
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="bg-white border rounded-xl p-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold">Mês analisado</h2>
-            <p className="text-[11px] text-slate-500">
-              A análise considera os hospitais onde você é administrador da escala.
-            </p>
-          </div>
+      <main className="mx-auto max-w-[1500px] px-6 py-6 space-y-5">
+        <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+                Análise
+              </p>
 
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="border rounded-lg px-3 py-2 text-sm bg-white"
-            >
-              {monthOptions.map((month) => (
-                <option key={month.value} value={month.value}>
-                  {month.label}
-                </option>
-              ))}
-            </select>
+              <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                Mês analisado
+              </h2>
 
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="border rounded-lg px-3 py-2 text-sm bg-white"
-            >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+              <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                A análise considera os hospitais onde você é administrador da escala.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#40C0A2]"
+              >
+                {monthOptions.map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#40C0A2]"
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
+        </section>
 
         {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
+          <div className="rounded-[28px] border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
             {errorMsg}
           </div>
         )}
 
         {loading && (
-          <div className="bg-white border rounded-xl p-4">
-            <p className="text-sm text-slate-600">Carregando conflitos...</p>
+          <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">Carregando conflitos...</p>
           </div>
         )}
 
         {!loading && !errorMsg && adminHospitalIds.length === 0 && (
-          <div className="bg-white border rounded-xl p-4">
-            <p className="text-sm text-slate-600">
+          <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">
               Você não possui hospitais com permissão de admin para analisar conflitos.
             </p>
           </div>
         )}
 
         {!loading && !errorMsg && adminHospitalIds.length > 0 && conflicts.length === 0 && (
-          <div className="bg-white border rounded-xl p-4">
-            <p className="text-sm text-slate-600">Nenhum conflito encontrado nesse período.</p>
+          <div className="rounded-[34px] border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+            <p className="text-sm font-black text-emerald-700">
+              Nenhum conflito encontrado nesse período.
+            </p>
+
+            <p className="mt-1 text-xs font-semibold text-emerald-700/70">
+              As escalas analisadas não apresentam sobreposição entre hospitais.
+            </p>
           </div>
         )}
 
         {!loading && !errorMsg && conflicts.length > 0 && (
-          <div className="space-y-3">
+          <section className="space-y-3">
+            <div className="rounded-[34px] border border-amber-100 bg-amber-50 p-5 shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                Atenção
+              </p>
+
+              <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                {conflicts.length} conflito(s) detectado(s)
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-600">
+                Revise os plantões abaixo para evitar sobreposição de escala.
+              </p>
+            </div>
+
             {conflicts.map((item) => (
               <div
                 key={`${item.doctor_user_id}-${item.date}-${item.period}`}
-                className="bg-white border border-amber-300 rounded-xl p-4"
+                className="rounded-[34px] border border-amber-100 bg-white p-5 shadow-sm"
               >
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h2 className="text-sm font-semibold">{item.doctor_name}</h2>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">
+                      Conflito
+                    </p>
+
+                    <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                      {item.doctor_name}
+                    </h2>
+
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
                       {formatDateBR(item.date)} • {periodLabel(item.period)}
                     </p>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {item.hospitals.map((hospital) => (
                         <span
                           key={hospital.hospital_id}
-                          className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700"
+                          className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black text-amber-700"
                         >
                           {hospital.hospital_name}
                         </span>
@@ -382,7 +436,7 @@ function ConflitosPageContent() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => router.push(`/escala/editar?date=${item.date}`)}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100 active:scale-95"
                     >
                       Ver data
                     </button>
@@ -390,8 +444,8 @@ function ConflitosPageContent() {
                 </div>
               </div>
             ))}
-          </div>
-                )}
+          </section>
+        )}
       </main>
     </div>
   );
@@ -401,8 +455,10 @@ export default function ConflitosPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-          <p className="text-sm text-slate-600">Carregando conflitos...</p>
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-500">Carregando conflitos...</p>
+          </div>
         </div>
       }
     >

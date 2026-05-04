@@ -116,7 +116,8 @@ const [dailyMessageText, setDailyMessageText] = useState('');
   const [sendMode, setSendMode] = useState<'all' | 'single'>('single');
   const [targetUserId, setTargetUserId] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [showMessageModal, setShowMessageModal] = useState(false);
+const [showMessageModal, setShowMessageModal] = useState(false);
+const [doctorOptionsLoading, setDoctorOptionsLoading] = useState(false);
 
   // ✅ CORREÇÃO DE DATA: Garante que o fuso horário não altere o dia
 function formatDateBR(dateStr: string, shortWeekday = true) {
@@ -320,61 +321,52 @@ function buildDailyShiftMessage(rows: DailyShiftRow[], date: string, hospital: s
   };
 
 return [
-
   `${formatDateBR(date, false).replace(/^./, (c) => c.toUpperCase())}:`,
-
   `🏥 ${hospital}`,
-
   '',
-
   section('Manhã', grouped.manha),
-
   '',
-
   section('Tarde', grouped.tarde),
-
   '',
-
   section('Noite', grouped.noite),
-
   grouped['24h'].length > 0 ? '' : null,
-
   grouped['24h'].length > 0 ? section('24h', grouped['24h']) : null,
-
   '',
-
   'Em caso de inconsistências, favor comunicar a coordenação.',
-
 ]
-
   .filter(Boolean)
-
   .join('\n');
 }
 
 const loadDoctors = useCallback(async (hId: string) => {
-  const { data, error } = await supabase
-    .from('hospital_users')
-    .select('user_id, role, users(full_name, email)')
-    .eq('hospital_id', hId)
-    .in('role', ['doctor', 'admin']);
+  setDoctorOptionsLoading(true);
 
-  if (error) {
-    console.error('Erro ao carregar destinatários:', error);
-    return;
-  }
+  try {
+    const { data, error } = await supabase
+      .from('hospital_users')
+      .select('user_id, role, users(full_name, email)')
+      .eq('hospital_id', hId)
+      .in('role', ['doctor', 'admin']);
 
-  if (data) {
-    const formatted = data.map((item: any) => ({
-      user_id: item.user_id,
-      users: Array.isArray(item.users) ? item.users[0] : item.users,
-    }));
+    if (error) {
+      console.error('Erro ao carregar destinatários:', error);
+      return;
+    }
 
-    const unique = Array.from(
-      new Map(formatted.map((item) => [item.user_id, item])).values()
-    );
+    if (data) {
+      const formatted = data.map((item: any) => ({
+        user_id: item.user_id,
+        users: Array.isArray(item.users) ? item.users[0] : item.users,
+      }));
 
-    setDoctorOptions(unique as DoctorOption[]);
+      const unique = Array.from(
+        new Map(formatted.map((item) => [item.user_id, item])).values()
+      );
+
+      setDoctorOptions(unique as DoctorOption[]);
+    }
+  } finally {
+    setDoctorOptionsLoading(false);
   }
 }, []);
 
@@ -813,7 +805,6 @@ useEffect(() => {
             await Promise.all([
   loadAvailabilityData(hosp.id),
   loadSwapRequests(hosp.id),
-  loadDoctors(hosp.id),
 ]);
 
 setLoading(false);
@@ -826,11 +817,9 @@ void loadConflictCount(user.id);
   router,
   loadAvailabilityData,
   loadSwapRequests,
-  loadDoctors,
   loadOtherHospitalAlerts,
   loadConflictCount,
 ]);
-
   useEffect(() => {
   if (!hospitalId) return;
 
@@ -881,6 +870,16 @@ void loadConflictCount(user.id);
       alert('Não foi possível copiar automaticamente. Selecione o texto e copie manualmente.');
     }
   }
+
+async function openMessageModal() {
+  setShowMessageModal(true);
+
+  if (!hospitalId) return;
+
+  if (doctorOptions.length === 0) {
+    await loadDoctors(hospitalId);
+  }
+}
 
   async function sendAdminMessage() {
     if (!messageTitle.trim() || !messageBody.trim()) {
@@ -961,289 +960,490 @@ void loadConflictCount(user.id);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <p className="text-sm text-slate-600">Carregando painel...</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Carregando painel administrativo...</p>
+        </div>
       </div>
     );
   }
 
   if (!hospitalId) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="bg-white border rounded-xl px-4 py-3 text-sm">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="rounded-[32px] border border-slate-100 bg-white px-6 py-5 text-sm text-slate-600 shadow-sm">
           Erro: Hospital não identificado.
         </div>
       </div>
     );
   }
 
+  const totalOtherHospitalPending = otherHospitalAlerts.reduce(
+    (sum, item) => sum + item.awaiting_confirmation_count,
+    0
+  );
+
+const coordinationPendingSwaps = swapRequests.filter((request) =>
+  isAwaitingCoordination(request)
+);
+
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] uppercase text-slate-500">Painel do hospital</p>
-            <h1 className="text-xl font-semibold">{hospitalName}</h1>
-            <p className="text-[11px] text-slate-500">Logado como: {adminName}</p>
-          </div>
-                   <div className="flex gap-2">
-            <button
-              onClick={() => setShowMessageModal(true)}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Enviar aviso
-            </button>
+    <div className="min-h-screen bg-slate-50">
+<header className="rounded-b-[28px] bg-white shadow-sm">
+  <div className="mx-auto flex max-w-[1500px] items-start px-6 py-5">
+  <div className="flex h-20 w-20 shrink-0 items-center justify-center">
+    <img
+      src="/medturn-logo-transparent.png"
+      alt="MedTurn"
+      className="h-20 w-20 object-contain"
+    />
+  </div>
 
-            <button 
-              onClick={() => router.push('/escala')} 
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Ver escala mensal
-            </button>
+  <div className="ml-5 flex flex-1 flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="pt-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#40C0A2]">
+          MedTurn • Painel administrativo
+        </p>
 
-            {/* 🙈 CHECK-IN OCULTO POR ENQUANTO
-            <button
-              onClick={() => router.push('/checkin')}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Check-in
-            </button>
-            */}
+        <h1 className="mt-1 text-3xl font-black tracking-tighter text-slate-950">
+          {hospitalName}
+        </h1>
 
-            <button
-  onClick={() => {
-  if (conflictTargetMonth && conflictTargetYear) {
-    router.push(`/conflitos?month=${conflictTargetMonth}&year=${conflictTargetYear}`);
-    return;
-  }
+        <p className="mt-2 text-[11px] font-semibold text-slate-400">
+          Logado como: {adminName}
+        </p>
+      </div>
 
-  router.push('/conflitos');
-}}
-  className={`text-xs px-3 py-1.5 rounded-lg border hover:bg-slate-50 flex items-center gap-2 ${
-    conflictCount > 0
-      ? 'border-amber-300 bg-amber-50 text-amber-800'
-      : 'border-slate-300'
-  }`}
+      <div className="flex flex-wrap gap-2 lg:justify-end">
+<button
+  onClick={() => router.push('/escala')}
+  className="rounded-2xl bg-sky-600 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-sky-700 active:scale-95"
 >
-  <span>Ver conflitos</span>
-  {conflictCount > 0 && (
-    <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-      {conflictCount}
-    </span>
-  )}
+  Ver escala
 </button>
-
-<button 
-  onClick={() => router.push('/medicos')} 
-  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
->
-  Gerenciar médicos
-</button>
-
-            <button
-              onClick={() => router.push('/relatorio')}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Relatório de pagamento
-            </button>
 
 <button
-  onClick={() => router.push('/dashboard/trocas-log')}
-  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+  onClick={openMessageModal}
+  className="rounded-2xl bg-slate-950 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95"
 >
-  Histórico de trocas
+  Enviar aviso
 </button>
 
-            <button
-              onClick={() => router.push('/selecionar-hospital')}
-              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              Trocar hospital
-            </button>
-          </div>
-        </div>
-      </header>
+<button
+  onClick={() => {
+    setShowDailyMessageModal(true);
+    void generateDailyShiftMessage(dailyMessageDate);
+  }}
+  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
+>
+  Mensagem do plantão
+</button>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+        <button
+          onClick={() => router.push('/selecionar-hospital')}
+          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100 active:scale-95"
+        >
+          Trocar hospital
+        </button>
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            router.push('/login');
+          }}
+          className="rounded-2xl border border-red-100 bg-red-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-red-700 hover:bg-red-100 active:scale-95"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <main className="max-w-[1500px] mx-auto p-6 space-y-5">
         {errorMsg && (
-          <div className="bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs">
+          <div className="rounded-[28px] border border-red-100 bg-red-50 px-5 py-4 text-sm text-red-700">
             {errorMsg}
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <section className="lg:col-span-2 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-  <button 
-    onClick={() => router.push('/escala')} 
-    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-  >
-    <h2 className="text-sm font-semibold mb-1">Escala mensal</h2>
-    <p className="text-[11px] text-slate-500">Visualize e edite a escala de plantões.</p>
-  </button>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+  <section className="space-y-5">
+            <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+                    Ações rápidas
+                  </p>
+                  <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                    Rotina da coordenação
+                  </h2>
+                </div>
+              </div>
 
-  <button
-    onClick={() => {
-      setShowDailyMessageModal(true);
-      void generateDailyShiftMessage(dailyMessageDate);
-    }}
-    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-  >
-    <h2 className="text-sm font-semibold mb-1">Mensagem do plantão</h2>
-    <p className="text-[11px] text-slate-500">
-      Gere a mensagem diária dos plantonistas por turno.
-    </p>
-  </button>
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+<button
+  onClick={() => router.push('/escala')}
+  className="group rounded-[28px] border border-sky-100 bg-sky-50 p-5 text-left hover:bg-sky-100/60 active:scale-[0.99]"
+>
+  <div className="flex items-start justify-between gap-3">
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+        Escala
+      </p>
+      <h3 className="mt-1 text-base font-black text-slate-900">
+        Escala mensal
+      </h3>
+    </div>
+    <span className="rounded-2xl bg-white px-3 py-1 text-[10px] font-black text-sky-700 shadow-sm">
+      Abrir
+    </span>
+  </div>
+  <p className="mt-3 text-xs leading-relaxed text-slate-600">
+    Visualize e edite a escala de plantões do hospital selecionado.
+  </p>
+</button>
 
-  <button
-    onClick={() => router.push('/relatorio')}
-    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-  >
-    <h2 className="text-sm font-semibold mb-1">Relatório de pagamento</h2>
-    <p className="text-[11px] text-slate-500">Calcule turnos do mês e gerencie feriados.</p>
-  </button>
+<button
+  onClick={() => {
+    setShowDailyMessageModal(true);
+    void generateDailyShiftMessage(dailyMessageDate);
+  }}
+  className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left hover:border-sky-100 hover:bg-sky-50/40 active:scale-[0.99]"
+>
+  <div className="flex items-start justify-between gap-3">
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+        Comunicação
+      </p>
+      <h3 className="mt-1 text-base font-black text-slate-900">
+        Mensagem do plantão
+      </h3>
+    </div>
+    <span className="rounded-2xl bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
+      Gerar
+    </span>
+  </div>
+  <p className="mt-3 text-xs leading-relaxed text-slate-500">
+    Gere o texto diário com os plantonistas separados por turno.
+  </p>
+</button>
 
-  <button
-    onClick={() => router.push('/dashboard/trocas-log')}
-    className="bg-white border rounded-xl p-4 text-left hover:shadow-sm transition-shadow"
-  >
-    <h2 className="text-sm font-semibold mb-1">Histórico de trocas</h2>
-    <p className="text-[11px] text-slate-500">
-      Consulte trocas realizadas, pendentes e não realizadas por mês.
-    </p>
-  </button>
-</div>
+                <button
+                  onClick={() => router.push('/relatorio')}
+                  className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left hover:border-sky-100 hover:bg-sky-50/40 active:scale-[0.99]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Financeiro
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-900">
+                        Relatório de pagamento
+                      </h3>
+                    </div>
+                    <span className="rounded-2xl bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
+                      Abrir
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                    Calcule turnos do mês e gerencie feriados da produção.
+                  </p>
+                </button>
 
-                  
+                <button
+                  onClick={() => router.push('/dashboard/trocas-log')}
+                  className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left hover:border-sky-100 hover:bg-sky-50/40 active:scale-[0.99]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Auditoria
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-900">
+                        Histórico de trocas
+                      </h3>
+                    </div>
+                    <span className="rounded-2xl bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
+                      Abrir
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                    Consulte trocas realizadas, pendentes e não realizadas por mês.
+                  </p>
+                </button>
 
-            <div className="bg-white border rounded-xl p-4">
-               <h2 className="text-sm font-semibold mb-2">Próximos passos</h2>
-               <ul className="text-[11px] text-slate-600 list-disc ml-4 space-y-1">
-                 <li>Use a página <strong>Escala mensal</strong> para organizar quem está em cada plantão.</li>
-                 <li>Peça para os médicos manterem a <strong>disponibilidade atualizada</strong> no app.</li>
-                 <li>Acompanhe o <strong>Relatório de pagamento</strong> para o fechamento do mês.</li>
-                 <li>Use as <strong>notificações</strong> ao lado para montar a escala mais rápido.</li>
-                 <li>Use a <strong>Mensagem do plantão</strong> para gerar o texto diário sem digitar nomes manualmente.</li>
-               </ul>
+                <button
+                  onClick={() => router.push('/medicos')}
+                  className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left hover:border-sky-100 hover:bg-sky-50/40 active:scale-[0.99]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Equipe
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-900">
+                        Gerenciar médicos
+                      </h3>
+                    </div>
+                    <span className="rounded-2xl bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
+                      Abrir
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                    Organize os usuários vinculados ao hospital.
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (conflictTargetMonth && conflictTargetYear) {
+                      router.push(`/conflitos?month=${conflictTargetMonth}&year=${conflictTargetYear}`);
+                      return;
+                    }
+
+                    router.push('/conflitos');
+                  }}
+                  className={`group rounded-[28px] border p-5 text-left active:scale-[0.99] ${
+                    conflictCount > 0
+                      ? 'border-amber-100 bg-amber-50 hover:bg-amber-100/60'
+                      : 'border-slate-100 bg-slate-50 hover:border-sky-100 hover:bg-sky-50/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Segurança
+                      </p>
+                      <h3 className="mt-1 text-base font-black text-slate-900">
+                        Ver conflitos
+                      </h3>
+                    </div>
+                    <span className={`rounded-2xl px-3 py-1 text-[10px] font-black shadow-sm ${
+                      conflictCount > 0
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white text-slate-500'
+                    }`}>
+                      {conflictCount}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                    Verifique médicos escalados em mais de um hospital no mesmo período.
+                  </p>
+                </button>
+              </div>
             </div>
-          </section>
 
-          <section className="space-y-3">
-  <div className="bg-white border rounded-xl p-4">
-    <div className="flex items-center justify-between mb-2">
-      <h2 className="text-sm font-semibold">Disponibilidades e solicitações</h2>
-      <button
-        onClick={() => {
-          void loadAvailabilityData(hospitalId!);
-          void loadSwapRequests(hospitalId!);
-        }}
-        className="text-[10px] text-slate-500 hover:text-slate-800"
+<div
+  className={`rounded-[34px] border p-5 shadow-sm ${
+    conflictCount > 0
+      ? 'border-amber-100 bg-amber-50'
+      : coordinationPendingSwaps.length > 0
+      ? 'border-sky-100 bg-sky-50'
+      : 'border-emerald-100 bg-emerald-50'
+  }`}
+>
+  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div>
+      <p
+        className={`text-[10px] font-black uppercase tracking-widest ${
+          conflictCount > 0
+            ? 'text-amber-700'
+            : coordinationPendingSwaps.length > 0
+            ? 'text-sky-700'
+            : 'text-emerald-700'
+        }`}
       >
-        Atualizar
-      </button>
+        Prioridade agora
+      </p>
+
+      <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+        {conflictCount > 0
+          ? `${conflictCount} conflito(s) detectado(s)`
+          : coordinationPendingSwaps.length > 0
+          ? `${coordinationPendingSwaps.length} troca(s) aguardando confirmação`
+          : 'Sem pendências no momento'}
+      </h2>
+
+      <p className="mt-1 text-sm text-slate-600">
+        {conflictCount > 0
+          ? 'Há médicos com possível sobreposição de plantões no próximo mês.'
+          : coordinationPendingSwaps.length > 0
+          ? 'Existem trocas já aceitas pelos médicos e aguardando confirmação da coordenação.'
+          : 'Nenhuma prioridade crítica encontrada no momento.'}
+      </p>
     </div>
 
-    <p className="text-[11px] text-slate-500 mb-1">Últimos anúncios de disponibilidade (30 dias).</p>
-    {notifLoading && <p className="text-[11px] text-slate-500 mb-2">Carregando...</p>}
+    <button
+      onClick={() => {
+        if (conflictCount > 0) {
+          if (conflictTargetMonth && conflictTargetYear) {
+            router.push(`/conflitos?month=${conflictTargetMonth}&year=${conflictTargetYear}`);
+            return;
+          }
 
-    {!notifLoading && notifications.length === 0 && (
-      <p className="text-[11px] text-slate-400 mb-2">Nenhum anúncio recente.</p>
-    )}
+          router.push('/conflitos');
+          return;
+        }
 
-    {!notifLoading && notifications.length > 0 && (
-      <ul className="space-y-2 max-h-64 overflow-auto pr-1 mb-4">
-        {notifications.map((n) => (
-          <li
-            key={`${n.user_id}-${n.date}-${n.period}-${n.created_at}`}
-            className="border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50"
-          >
-            <div className="flex justify-between items-center">
-              <span className="font-medium truncate">
-                {n.users?.full_name ?? n.users?.email ?? 'Médico'}
-              </span>
-              <span className="text-[10px] text-slate-500">{formatDateTimeBR(n.created_at)}</span>
-            </div>
+        if (coordinationPendingSwaps[0]?.id) {
+          router.push(`/solicitacoes/${coordinationPendingSwaps[0].id}`);
+          return;
+        }
 
-            <div className="flex justify-between items-center mt-1">
-              <span className="text-slate-600">
-                Disp. para <strong>{formatDateBR(n.date)}</strong>
-              </span>
-            </div>
-
-            <div className="flex justify-between items-center mt-1">
-              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + periodChipClass(n.period)}>
-                {periodLabel(n.period)}
-              </span>
-              <button
-                onClick={() => router.push(`/escala/editar?date=${n.date}`)}
-                className="text-[10px] text-slate-600 underline"
-              >
-                Ir para escala
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    )}
-
-    <h3 className="text-[11px] font-semibold text-slate-700 mt-2 mb-1">Solicitações de troca</h3>
-    {swapLoading && <p className="text-[11px] text-slate-500">Carregando...</p>}
-    {!swapLoading && swapRequests.length === 0 && (
-      <p className="text-[11px] text-slate-400">Nenhuma solicitação pendente.</p>
-    )}
-
-    {!swapLoading && swapRequests.length > 0 && (
-      <ul className="space-y-2 max-h-64 overflow-auto pr-1">
-        {swapRequests.map((r) => (
-          <li
-            key={r.id}
-            className={`border rounded-lg px-2.5 py-2 text-[11px] flex flex-col gap-1 bg-slate-50 transition-all ${
-  isAwaitingCoordination(r)
-    ? 'border-emerald-400 shadow-sm shadow-emerald-100'
-    : isDirectOfferPending(r)
-    ? 'border-blue-300 shadow-sm shadow-blue-50'
-    : ''
-}`}
-          >
-            <div className="flex justify-between items-center">
-              <span className="font-medium truncate">{r.requester?.full_name ?? 'Médico'}</span>
-              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + visualStatusChipClass(r)}>
-  {visualStatusLabel(r)}
-</span>
-            </div>
-
-            <div className="text-slate-600 mt-1">
-  {isAwaitingCoordination(r) ? (
-    <p>
-      <span className="text-emerald-600 font-bold">
-        ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
-      </span>{' '}
-      a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]} —{' '}
-      <span className="text-[10px] text-slate-500">clique para confirmar</span>
-    </p>
-  ) : isDirectOfferPending(r) ? (
-    <p>
-      <span className="text-blue-700 font-bold">
-        ● Oferta direcionada enviada para {(r.target?.full_name ?? r.target?.email ?? 'Médico').split(' ')[0]}
-      </span>{' '}
-      <span className="text-[10px] text-slate-500">aguardando aceite do médico</span>
-    </p>
-  ) : (
-    <p>
-      Solicitação de cobertura:{' '}
-      <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
-    </p>
-  )}
-
-  <div className="text-[10px] text-slate-400 mt-1">
-    📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+        router.push('/escala');
+      }}
+      className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm active:scale-95 ${
+        conflictCount > 0
+          ? 'bg-amber-600 hover:bg-amber-700'
+          : coordinationPendingSwaps.length > 0
+          ? 'bg-sky-600 hover:bg-sky-700'
+          : 'bg-emerald-600 hover:bg-emerald-700'
+      }`}
+    >
+      {conflictCount > 0
+        ? 'Ver conflitos'
+        : coordinationPendingSwaps.length > 0
+        ? 'Confirmar troca'
+        : 'Abrir escala'}
+    </button>
   </div>
 </div>
 
-            <div className="flex justify-end mt-1">
+            <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+  <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+    Guia operacional
+  </p>
+
+  <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+    Próximos passos
+  </h2>
+
+  <ul className="mt-4 list-disc space-y-1.5 pl-4 text-[11px] leading-relaxed text-slate-600">
+    <li>
+      Use a página <strong>Escala mensal</strong> para organizar quem está em cada plantão.
+    </li>
+
+    <li>
+      Peça para os médicos manterem a <strong>disponibilidade atualizada</strong> no app.
+    </li>
+
+    <li>
+      Acompanhe o <strong>Relatório de pagamento</strong> para o fechamento do mês.
+    </li>
+
+    <li>
+      Use as <strong>notificações ao lado</strong> para montar a escala mais rápido.
+    </li>
+
+<li>
+      Use <strong>Enviar aviso</strong> para mandar notificações aos plantonistas.
+    </li>
+
+    <li>
+      Use a <strong>Mensagem do plantão</strong> para gerar o texto diário sem digitar nomes manualmente.
+    </li>
+  </ul>
+</div>
+          </section>
+
+          <section className="space-y-4">
+            <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+  <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+    Central de pendências
+  </p>
+</div>
+
+                <button
+                  onClick={() => {
+                    void loadAvailabilityData(hospitalId!);
+                    void loadSwapRequests(hospitalId!);
+                  }}
+                  className="rounded-2xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-200"
+                >
+                  Atualizar
+                </button>
+              </div>
+
+              <div className="mt-1 space-y-4">
+  {/* Solicitações de troca */}
+  <div>
+    <div className="flex items-center justify-between gap-2">
+      <div>
+        <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+          Solicitações de troca
+        </p>
+      </div>
+
+      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600">
+        {swapRequests.length}
+      </span>
+    </div>
+
+    {swapLoading && <p className="mt-3 text-[11px] text-slate-500">Carregando...</p>}
+
+    {!swapLoading && swapRequests.length === 0 && (
+      <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-3 text-[11px] text-slate-400">
+        Nenhuma solicitação pendente.
+      </p>
+    )}
+
+    {!swapLoading && swapRequests.length > 0 && (
+      <ul className="mt-3 space-y-2 max-h-72 overflow-auto pr-1">
+        {swapRequests.map((r) => (
+          <li
+            key={r.id}
+            className={`rounded-2xl border bg-slate-50 px-3 py-3 text-[11px] ${
+              isAwaitingCoordination(r)
+                ? 'border-emerald-300 shadow-sm shadow-emerald-100'
+                : isDirectOfferPending(r)
+                ? 'border-blue-300 shadow-sm shadow-blue-50'
+                : 'border-slate-100'
+            }`}
+          >
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-slate-700 truncate">
+                {r.requester?.full_name ?? 'Médico'}
+              </span>
+              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + visualStatusChipClass(r)}>
+                {visualStatusLabel(r)}
+              </span>
+            </div>
+
+            <div className="text-slate-600 mt-2">
+              {isAwaitingCoordination(r) ? (
+                <p>
+                  <span className="text-emerald-600 font-bold">
+                    ● {(r.target?.full_name ?? r.target?.email ?? 'Alguém').split(' ')[0]} aceitou
+                  </span>{' '}
+                  a troca de {(r.requester?.full_name ?? r.requester?.email ?? 'Médico').split(' ')[0]} —{' '}
+                  <span className="text-[10px] text-slate-500">clique para confirmar</span>
+                </p>
+              ) : isDirectOfferPending(r) ? (
+                <p>
+                  <span className="text-blue-700 font-bold">
+                    ● Oferta direcionada enviada para {(r.target?.full_name ?? r.target?.email ?? 'Médico').split(' ')[0]}
+                  </span>{' '}
+                  <span className="text-[10px] text-slate-500">aguardando aceite do médico</span>
+                </p>
+              ) : (
+                <p>
+                  Solicitação de cobertura:{' '}
+                  <strong>{r.requester?.full_name ?? r.requester?.email ?? 'Médico'}</strong>
+                </p>
+              )}
+
+              <div className="text-[10px] text-slate-400 mt-2">
+                📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-2">
               <button
                 onClick={() => router.push(`/solicitacoes/${r.id}`)}
-                className="text-[10px] text-slate-600 underline"
+                className="text-[10px] font-bold text-slate-600 underline"
               >
                 Ver detalhes
               </button>
@@ -1254,47 +1454,65 @@ void loadConflictCount(user.id);
     )}
   </div>
 
-  <div className="bg-white border rounded-xl p-4">
-    <div className="flex items-center justify-between mb-2">
-      <h2 className="text-sm font-semibold">Pendências em outros hospitais</h2>
+  <div className="h-px bg-slate-100" />
+
+  {/* Disponibilidades */}
+  <div>
+    <div className="flex items-center justify-between gap-2">
+      <div>
+        <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+          Disponibilidades
+        </p>
+
+        {notifications.length > 0 && (
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Últimos anúncios dos médicos nos últimos 30 dias.
+          </p>
+        )}
+      </div>
+
+      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600">
+        {notifications.length}
+      </span>
     </div>
 
-    <p className="text-[11px] text-slate-500 mb-2">
-      Mostra trocas já aceitas por outro médico e que ainda aguardam sua confirmação.
-    </p>
+    {notifLoading && <p className="mt-3 text-[11px] text-slate-500">Carregando...</p>}
 
-    {otherAlertsLoading && (
-      <p className="text-[11px] text-slate-500">Carregando...</p>
-    )}
-
-    {!otherAlertsLoading && otherHospitalAlerts.length === 0 && (
-      <p className="text-[11px] text-slate-400">
-        Nenhuma pendência encontrada nos outros hospitais.
+    {!notifLoading && notifications.length === 0 && (
+      <p className="mt-2 text-[11px] text-slate-400">
+        Nenhum anúncio recente.
       </p>
     )}
 
-    {!otherAlertsLoading && otherHospitalAlerts.length > 0 && (
-      <ul className="space-y-2">
-        {otherHospitalAlerts.map((item) => (
+    {!notifLoading && notifications.length > 0 && (
+      <ul className="mt-3 space-y-2 max-h-56 overflow-auto pr-1">
+        {notifications.map((n) => (
           <li
-            key={item.hospital_id}
-            className="border border-emerald-300 rounded-lg px-3 py-2 text-[11px] bg-slate-50"
+            key={`${n.user_id}-${n.date}-${n.period}-${n.created_at}`}
+            className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-[11px]"
           >
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="font-medium">{item.hospital_name}</p>
-                <div className="mt-1 text-slate-600">
-                  <p className="font-semibold text-emerald-700">
-                    {item.awaiting_confirmation_count} aguardando confirmação
-                  </p>
-                </div>
-              </div>
+            <div className="flex justify-between items-center gap-2">
+              <span className="font-bold text-slate-700 truncate">
+                {n.users?.full_name ?? n.users?.email ?? 'Médico'}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {formatDateTimeBR(n.created_at)}
+              </span>
+            </div>
 
+            <div className="mt-2 text-slate-600">
+              Disp. para <strong>{formatDateBR(n.date)}</strong>
+            </div>
+
+            <div className="flex justify-between items-center mt-2">
+              <span className={'px-2 py-0.5 rounded-full border text-[10px] ' + periodChipClass(n.period)}>
+                {periodLabel(n.period)}
+              </span>
               <button
-                onClick={() => openHospitalDashboard(item.hospital_id)}
-                className="text-[10px] text-slate-600 underline whitespace-nowrap"
+                onClick={() => router.push(`/escala/editar?date=${n.date}`)}
+                className="text-[10px] font-bold text-slate-600 underline"
               >
-                Abrir hospital
+                Ir para escala
               </button>
             </div>
           </li>
@@ -1302,24 +1520,85 @@ void loadConflictCount(user.id);
       </ul>
     )}
   </div>
-</section>
+</div>
+            </div>
+
+            <div className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                    Multihospital
+                  </p>
+                  <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+                    Pendências em outros hospitais
+                  </h2>
+                </div>
+              </div>
+
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                Trocas já aceitas por outro médico e que ainda aguardam sua confirmação.
+              </p>
+
+              {otherAlertsLoading && (
+                <p className="mt-4 text-[11px] text-slate-500">Carregando...</p>
+              )}
+
+              {!otherAlertsLoading && otherHospitalAlerts.length === 0 && (
+                <div className="mt-4 rounded-3xl bg-slate-50 px-4 py-4 text-[11px] text-slate-400">
+                  Nenhuma pendência encontrada nos outros hospitais.
+                </div>
+              )}
+
+              {!otherAlertsLoading && otherHospitalAlerts.length > 0 && (
+                <ul className="mt-4 space-y-2">
+                  {otherHospitalAlerts.map((item) => (
+                    <li
+                      key={item.hospital_id}
+                      className="rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-[11px]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-black text-slate-800">{item.hospital_name}</p>
+                          <p className="mt-1 font-bold text-emerald-700">
+                            {item.awaiting_confirmation_count} aguardando confirmação
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => openHospitalDashboard(item.hospital_id)}
+                          className="rounded-2xl bg-white px-3 py-2 text-[10px] font-black text-slate-700 shadow-sm whitespace-nowrap"
+                        >
+                          Abrir
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
-           </main>
+      </main>
 
       {showDailyMessageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b px-5 py-4">
+          <div className="w-full max-w-2xl rounded-[34px] bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold">Mensagem do plantão</h2>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+                  Comunicação
+                </p>
+                <h2 className="mt-1 text-base font-black text-slate-950">
+                  Mensagem do plantão
+                </h2>
+                <p className="mt-1 text-[11px] text-slate-500">
                   Gere automaticamente a mensagem diária com os plantonistas separados por turno.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowDailyMessageModal(false)}
-                className="text-sm text-slate-500 hover:text-slate-800"
+                className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-200"
               >
                 Fechar
               </button>
@@ -1334,13 +1613,13 @@ void loadConflictCount(user.id);
                     setDailyMessageDate(e.target.value);
                     void generateDailyShiftMessage(e.target.value);
                   }}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400"
                 />
 
                 <button
                   onClick={() => generateDailyShiftMessage()}
                   disabled={dailyMessageLoading}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50 disabled:opacity-60"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                 >
                   {dailyMessageLoading ? 'Gerando...' : 'Gerar mensagem'}
                 </button>
@@ -1351,7 +1630,7 @@ void loadConflictCount(user.id);
                 onChange={(e) => setDailyMessageText(e.target.value)}
                 rows={14}
                 placeholder="A mensagem gerada aparecerá aqui..."
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm resize-none"
+                className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none resize-none focus:border-sky-400"
               />
 
               <p className="text-[11px] text-slate-500">
@@ -1359,10 +1638,10 @@ void loadConflictCount(user.id);
               </p>
             </div>
 
-            <div className="flex justify-end gap-2 border-t px-5 py-4">
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
               <button
                 onClick={() => setShowDailyMessageModal(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-700 hover:bg-slate-100"
               >
                 Cancelar
               </button>
@@ -1370,7 +1649,7 @@ void loadConflictCount(user.id);
               <button
                 onClick={copyDailyShiftMessage}
                 disabled={!dailyMessageText.trim()}
-                className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+                className="rounded-2xl bg-sky-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-sky-700 active:scale-95 disabled:opacity-60"
               >
                 Copiar mensagem
               </button>
@@ -1381,18 +1660,23 @@ void loadConflictCount(user.id);
 
       {showMessageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b px-5 py-4">
+          <div className="w-full max-w-2xl rounded-[34px] bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold">Enviar aviso</h2>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+                  Aviso administrativo
+                </p>
+                <h2 className="mt-1 text-base font-black text-slate-950">
+                  Enviar aviso
+                </h2>
+                <p className="mt-1 text-[11px] text-slate-500">
                   Envie um aviso para um usuário específico ou para todos os usuários do hospital.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowMessageModal(false)}
-                className="text-sm text-slate-500 hover:text-slate-800"
+                className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-200"
               >
                 Fechar
               </button>
@@ -1404,7 +1688,7 @@ void loadConflictCount(user.id);
                 value={messageTitle}
                 onChange={(e) => setMessageTitle(e.target.value)}
                 placeholder="Título do aviso"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400"
               />
 
               <textarea
@@ -1412,40 +1696,44 @@ void loadConflictCount(user.id);
                 onChange={(e) => setMessageBody(e.target.value)}
                 placeholder="Mensagem"
                 rows={5}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm resize-none"
+                className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none resize-none focus:border-sky-400"
               />
 
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-  <select
-    value={sendMode}
-    onChange={(e) => setSendMode(e.target.value as 'all' | 'single')}
-    className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
-  >
-    <option value="single">Enviar para um usuário</option>
-    <option value="all">Enviar para todos do hospital</option>
-  </select>
+                <select
+                  value={sendMode}
+                  onChange={(e) => setSendMode(e.target.value as 'all' | 'single')}
+                  className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400"
+                >
+                  <option value="single">Enviar para um usuário</option>
+                  <option value="all">Enviar para todos do hospital</option>
+                </select>
 
-  {sendMode === 'single' && (
-    <select
-      value={targetUserId}
-      onChange={(e) => setTargetUserId(e.target.value)}
-      className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
-    >
-      <option value="">Selecione um usuário</option>
-      {doctorOptions.map((doc) => (
-        <option key={doc.user_id} value={doc.user_id}>
-          {doc.users?.full_name ?? doc.users?.email ?? doc.user_id}
-        </option>
-      ))}
-    </select>
-  )}
-</div>
+                {sendMode === 'single' && (
+  <select
+    value={targetUserId}
+    onChange={(e) => setTargetUserId(e.target.value)}
+    disabled={doctorOptionsLoading}
+    className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-sky-400 disabled:opacity-60"
+  >
+    <option value="">
+      {doctorOptionsLoading ? 'Carregando usuários...' : 'Selecione um usuário'}
+    </option>
+
+    {doctorOptions.map((doc) => (
+      <option key={doc.user_id} value={doc.user_id}>
+        {doc.users?.full_name ?? doc.users?.email ?? doc.user_id}
+      </option>
+    ))}
+  </select>
+)}
+              </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t px-5 py-4">
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
               <button
                 onClick={() => setShowMessageModal(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-700 hover:bg-slate-100"
               >
                 Cancelar
               </button>
@@ -1453,7 +1741,7 @@ void loadConflictCount(user.id);
               <button
                 onClick={sendAdminMessage}
                 disabled={sendingMessage}
-                className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-60"
+                className="rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800 active:scale-95 disabled:opacity-60"
               >
                 {sendingMessage ? 'Enviando...' : 'Enviar aviso'}
               </button>
