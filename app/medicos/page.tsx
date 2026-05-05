@@ -61,33 +61,27 @@ export default function MedicosPage() {
   const [importErr, setImportErr] = useState<string | null>(null);
 
   async function reloadDoctors(hId: string) {
-    const { data: doctorsData, error: doctorsError } = await supabase
-      .from('hospital_users')
-      .select('id, role, created_at, users(id, full_name, email)')
-      .eq('hospital_id', hId)
-      .order('role', { ascending: true });
+  const { data: doctorsData, error: doctorsError } = await supabase
+    .from('hospital_users')
+    .select('id, role, created_at, users(id, full_name, email)')
+    .eq('hospital_id', hId)
+    .order('role', { ascending: true });
 
-    if (doctorsError) {
-      setError('Não foi possível carregar a lista de médicos.');
-    } else if (doctorsData) {
-      const formatted = doctorsData.map((d: any) => ({
-        ...d,
-        users: Array.isArray(d.users) ? d.users[0] : d.users,
-      }));
-      setDoctors(formatted as DoctorRow[]);
-    }
+  if (doctorsError) {
+    console.error('Erro ao carregar médicos:', doctorsError);
+    setError('Não foi possível carregar a lista de médicos.');
+    setDoctors([]);
+    return;
   }
 
-  async function loadHospitalsList() {
-    const { data, error } = await supabase
-      .from('hospitals')
-      .select('id, name')
-      .order('name', { ascending: true });
+  const formatted = (doctorsData ?? []).map((d: any) => ({
+    ...d,
+    users: Array.isArray(d.users) ? d.users[0] : d.users,
+  }));
 
-    if (!error && data) {
-      setHospitals(data as HospitalRow[]);
-    }
-  }
+  setDoctors(formatted as DoctorRow[]);
+}
+
 
   useEffect(() => {
     async function loadDoctors() {
@@ -104,57 +98,88 @@ export default function MedicosPage() {
       }
 
       const storedHospitalId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem('activeHospitalId')
-          : null;
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`) ??
+      window.localStorage.getItem('activeHospitalId')
+    : null;
 
       if (!storedHospitalId) {
         router.push('/selecionar-hospital');
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
+      const [profileResult, hospitalResult, meResult, doctorsResult, hospitalsResult] =
+  await Promise.all([
+    supabase
+      .from('users')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle(),
 
-      setUserName(profile?.full_name ?? user.email ?? 'Usuário');
+    supabase
+      .from('hospitals')
+      .select('id, name')
+      .eq('id', storedHospitalId)
+      .maybeSingle(),
 
-      // Hospital selecionado (nome)
-      const { data: hosp, error: hospError } = await supabase
-        .from('hospitals')
-        .select('id, name')
-        .eq('id', storedHospitalId)
-        .maybeSingle();
+    supabase
+      .from('hospital_users')
+      .select('role')
+      .eq('hospital_id', storedHospitalId)
+      .eq('user_id', user.id)
+      .maybeSingle(),
 
-      if (hospError || !hosp) {
-        setError('Não foi possível identificar o hospital selecionado.');
-        setLoading(false);
-        return;
-      }
+    supabase
+      .from('hospital_users')
+      .select('id, role, created_at, users(id, full_name, email)')
+      .eq('hospital_id', storedHospitalId)
+      .order('role', { ascending: true }),
 
-      setHospitalId(hosp.id);
-      setHospitalName(hosp.name ?? 'Seu hospital');
+    supabase
+      .from('hospitals')
+      .select('id, name')
+      .order('name', { ascending: true }),
+  ]);
 
-      // Meu papel nesse hospital (pra liberar importação só pra admin/coordenador)
-      const { data: me, error: meErr } = await supabase
-        .from('hospital_users')
-        .select('role')
-        .eq('hospital_id', hosp.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
+const { data: profile } = profileResult;
+const { data: hosp, error: hospError } = hospitalResult;
+const { data: me, error: meErr } = meResult;
+const { data: doctorsData, error: doctorsError } = doctorsResult;
+const { data: hospitalsData, error: hospitalsError } = hospitalsResult;
 
-      if (!meErr && me?.role) {
-        setMyRole(me.role as DoctorRow['role']);
-      } else {
-        setMyRole(null);
-      }
+setUserName(profile?.full_name ?? user.email ?? 'Usuário');
 
-      await reloadDoctors(hosp.id);
-      await loadHospitalsList();
+if (hospError || !hosp) {
+  setError('Não foi possível identificar o hospital selecionado.');
+  setLoading(false);
+  return;
+}
 
-      setLoading(false);
+setHospitalId(hosp.id);
+setHospitalName(hosp.name ?? 'Seu hospital');
+
+if (!meErr && me?.role) {
+  setMyRole(me.role as DoctorRow['role']);
+} else {
+  setMyRole(null);
+}
+
+if (doctorsError) {
+  setError('Não foi possível carregar a lista de médicos.');
+} else {
+  const formatted = (doctorsData ?? []).map((d: any) => ({
+    ...d,
+    users: Array.isArray(d.users) ? d.users[0] : d.users,
+  }));
+
+  setDoctors(formatted as DoctorRow[]);
+}
+
+if (!hospitalsError && hospitalsData) {
+  setHospitals(hospitalsData as HospitalRow[]);
+}
+
+setLoading(false);
     }
 
     loadDoctors();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -87,9 +87,10 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
-  const [hospitalName, setHospitalName] = useState<string>('Hospital');
-  const [adminName, setAdminName] = useState<string>('Administrador');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+const [hospitalName, setHospitalName] = useState<string>('Hospital');
+const [adminName, setAdminName] = useState<string>('Administrador');
+const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [notifications, setNotifications] = useState<AvailabilityNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -118,6 +119,10 @@ const [dailyMessageText, setDailyMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
 const [showMessageModal, setShowMessageModal] = useState(false);
 const [doctorOptionsLoading, setDoctorOptionsLoading] = useState(false);
+const availabilityRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const swapRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const hasInitializedRef = useRef(false);
+const [switchingHospitalId, setSwitchingHospitalId] = useState<string | null>(null);
 
   // ✅ CORREÇÃO DE DATA: Garante que o fuso horário não altere o dia
 function formatDateBR(dateStr: string, shortWeekday = true) {
@@ -371,138 +376,116 @@ const loadDoctors = useCallback(async (hId: string) => {
 }, []);
 
   const loadOtherHospitalAlerts = useCallback(
-    async (currentHospitalId: string, currentUserId: string) => {
-      setOtherAlertsLoading(true);
+  async (currentHospitalId: string, memberships: any[]) => {
+    setOtherAlertsLoading(true);
 
-      try {
-        const { data: memberships, error: membershipsError } = await supabase
-          .from('hospital_users')
-          .select('hospital_id, role, is_admin, hospitals(name)')
-          .eq('user_id', currentUserId);
+    try {
+      const adminHospitals = (memberships ?? []).filter((m: any) => {
+        const isAllowed =
+          m?.is_admin === true ||
+          m?.role === 'admin' ||
+          m?.role === 'coordenador';
 
-        if (membershipsError) {
-          console.error('Erro ao carregar hospitais do admin:', membershipsError);
-          return;
-        }
+        return isAllowed && m.hospital_id !== currentHospitalId;
+      });
 
-        const adminHospitals = (memberships ?? []).filter((m: any) => {
-          const isAllowed =
-            m?.is_admin === true ||
-            m?.role === 'admin' ||
-            m?.role === 'coordenador';
+      if (adminHospitals.length === 0) {
+        setOtherHospitalAlerts([]);
+        return;
+      }
 
-          return isAllowed && m.hospital_id !== currentHospitalId;
+      const otherHospitalIds = adminHospitals.map((h: any) => h.hospital_id);
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
+
+      const { data: awaitingRows, error: awaitingError } = await supabase
+        .from('shift_swap_requests')
+        .select(`
+          id,
+          hospital_id,
+          status,
+          reason,
+          target_user_id,
+          shift:from_shift_id!inner(date)
+        `)
+        .in('hospital_id', otherHospitalIds)
+        .eq('status', 'pendente')
+        .not('target_user_id', 'is', null)
+        .gte('shift.date', dateLimit);
+
+      if (awaitingError) {
+        console.error('Erro ao contar trocas aguardando confirmação:', awaitingError);
+        setOtherHospitalAlerts([]);
+        return;
+      }
+
+      const countByHospital = new Map<string, number>();
+
+      for (const row of awaitingRows ?? []) {
+        const marketplaceAccepted =
+          row.status === 'pendente' &&
+          !!row.target_user_id &&
+          row.reason !== '__direct_offer__' &&
+          row.reason !== '__direct_offer__accepted' &&
+          row.reason !== '__offer_via_disponibilidade__';
+
+        const shouldCount =
+          marketplaceAccepted ||
+          row.reason === '__direct_offer__accepted' ||
+          row.reason === '__offer_via_disponibilidade__';
+
+        if (!shouldCount) continue;
+
+        countByHospital.set(
+          row.hospital_id,
+          (countByHospital.get(row.hospital_id) ?? 0) + 1
+        );
+      }
+
+      const alerts: OtherHospitalAlert[] = adminHospitals
+        .map((h: any) => {
+          const hospitalRel = h.hospitals as
+            | { name: string | null }
+            | { name: string | null }[]
+            | null
+            | undefined;
+
+          const hospitalName = Array.isArray(hospitalRel)
+            ? hospitalRel[0]?.name
+            : hospitalRel?.name;
+
+          return {
+            hospital_id: h.hospital_id,
+            hospital_name: hospitalName ?? 'Hospital',
+            awaiting_confirmation_count: countByHospital.get(h.hospital_id) ?? 0,
+          };
+        })
+        .filter((item) => item.awaiting_confirmation_count > 0)
+        .sort((a, b) => {
+          if (a.awaiting_confirmation_count !== b.awaiting_confirmation_count) {
+            return b.awaiting_confirmation_count - a.awaiting_confirmation_count;
+          }
+
+          return a.hospital_name.localeCompare(b.hospital_name, 'pt-BR', {
+            sensitivity: 'base',
+          });
         });
 
-        if (adminHospitals.length === 0) {
-          setOtherHospitalAlerts([]);
-          return;
-        }
-
-        const thirtyDaysAgo = new Date();
-thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
-
-        const alerts: OtherHospitalAlert[] = [];
-
-        for (const hosp of adminHospitals) {
-  const otherHospitalId = hosp.hospital_id;
-
-  const hospitalRel = hosp.hospitals as
-    | { name: string | null }
-    | { name: string | null }[]
-    | null
-    | undefined;
-
-  const otherHospitalName = Array.isArray(hospitalRel)
-    ? hospitalRel[0]?.name
-    : hospitalRel?.name;
-
-  const { data: awaitingRows, error: awaitingError } = await supabase
-  .from('shift_swap_requests')
-  .select(`
-    id,
-    status,
-    reason,
-    target_user_id,
-    shift:from_shift_id!inner(date)
-  `)
-  .eq('hospital_id', otherHospitalId)
-  .eq('status', 'pendente')
-  .not('target_user_id', 'is', null)
-  .gte('shift.date', dateLimit);
-
-if (awaitingError) {
-  console.error('Erro ao contar trocas aguardando confirmação:', awaitingError);
-  continue;
-}
-
-const awaitingConfirmationCount = (awaitingRows ?? []).filter((row: any) => {
-  const marketplaceAccepted =
-  row.status === 'pendente' &&
-  !!row.target_user_id &&
-  row.reason !== '__direct_offer__' &&
-  row.reason !== '__direct_offer__accepted' &&
-  row.reason !== '__offer_via_disponibilidade__';
-
-return (
-  marketplaceAccepted ||
-  row.reason === '__direct_offer__accepted' ||
-  row.reason === '__offer_via_disponibilidade__'
-);
-}).length;
-
-const c = awaitingConfirmationCount;
-
-if (c > 0) {
-  alerts.push({
-    hospital_id: otherHospitalId,
-    hospital_name: otherHospitalName ?? 'Hospital',
-    awaiting_confirmation_count: c,
-  });
-}
-}
-
-alerts.sort((a, b) => {
-  if (a.awaiting_confirmation_count !== b.awaiting_confirmation_count) {
-    return b.awaiting_confirmation_count - a.awaiting_confirmation_count;
-  }
-  return a.hospital_name.localeCompare(b.hospital_name, 'pt-BR', {
-    sensitivity: 'base',
-  });
-});
-
-        setOtherHospitalAlerts(alerts);
-      } catch (e) {
-        console.error('Erro ao carregar alertas de outros hospitais:', e);
-      } finally {
-        setOtherAlertsLoading(false);
-      }
-    },
-    []
-  );
-
-const loadConflictCount = useCallback(async (currentUserId: string) => {
-  try {
-    const { data: memberships, error: membershipsError } = await supabase
-      .from('hospital_users')
-      .select('hospital_id, role, is_admin')
-      .eq('user_id', currentUserId);
-
-    if (membershipsError) {
-      console.error('Erro ao carregar hospitais para conflitos:', membershipsError);
-      setConflictCount(0);
-      setConflictTargetMonth(null);
-      setConflictTargetYear(null);
-      return;
+      setOtherHospitalAlerts(alerts);
+    } catch (e) {
+      console.error('Erro ao carregar alertas de outros hospitais:', e);
+      setOtherHospitalAlerts([]);
+    } finally {
+      setOtherAlertsLoading(false);
     }
+  },
+  []
+);
 
-    const adminHospitalIds = (memberships ?? [])
-      .filter((m: any) => {
-        return m?.is_admin === true || m?.role === 'admin' || m?.role === 'coordenador';
-      })
-      .map((m: any) => m.hospital_id);
-
+const loadConflictCount = useCallback(async (adminHospitalIds: string[]) => {
+  try {
     if (adminHospitalIds.length === 0) {
       setConflictCount(0);
       setConflictTargetMonth(null);
@@ -589,8 +572,11 @@ const loadConflictCount = useCallback(async (currentUserId: string) => {
   }
 }, []);
 
-  const loadAvailabilityData = useCallback(async (hId: string) => {
-  setNotifLoading(true);
+  const loadAvailabilityData = useCallback(async (hId: string, silent = false) => {
+  if (!silent) {
+    setNotifLoading(true);
+  }
+
   try {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -609,17 +595,22 @@ const loadConflictCount = useCallback(async (currentUserId: string) => {
         ...item,
         users: Array.isArray(item.users) ? item.users[0] : item.users,
       }));
+
       setNotifications(formattedData as AvailabilityNotification[]);
     }
   } catch (e) {
     console.error(e);
   } finally {
-    setNotifLoading(false);
+    if (!silent) {
+      setNotifLoading(false);
+    }
   }
 }, []);
+const loadSwapRequests = useCallback(async (hId: string, silent = false) => {
+  if (!silent) {
+    setSwapLoading(true);
+  }
 
-const loadSwapRequests = useCallback(async (hId: string) => {
-  setSwapLoading(true);
   try {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -642,6 +633,7 @@ const loadSwapRequests = useCallback(async (hId: string) => {
     if (!error) {
       const formattedSwaps = (data ?? []).map((item: any) => {
         let shiftObj = Array.isArray(item.shift) ? item.shift[0] : item.shift;
+
         if (shiftObj && Array.isArray(shiftObj.doctor)) {
           shiftObj = { ...shiftObj, doctor: shiftObj.doctor[0] };
         }
@@ -655,23 +647,102 @@ const loadSwapRequests = useCallback(async (hId: string) => {
       });
 
       const sortedSwaps = formattedSwaps.sort((a, b) => {
-  const aAwaiting = isAwaitingCoordination(a);
-  const bAwaiting = isAwaitingCoordination(b);
+        const aAwaiting = isAwaitingCoordination(a);
+        const bAwaiting = isAwaitingCoordination(b);
 
-  if (aAwaiting && !bAwaiting) return -1;
-  if (!aAwaiting && bAwaiting) return 1;
+        if (aAwaiting && !bAwaiting) return -1;
+        if (!aAwaiting && bAwaiting) return 1;
 
-  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-});
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
 
       setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
     }
   } catch (e) {
     console.error(e);
   } finally {
-    setSwapLoading(false);
+    if (!silent) {
+      setSwapLoading(false);
+    }
   }
 }, []);
+
+const loadMainDashboardData = useCallback(
+  async (hId: string) => {
+    await Promise.all([
+      loadAvailabilityData(hId),
+      loadSwapRequests(hId),
+    ]);
+  },
+  [loadAvailabilityData, loadSwapRequests]
+);
+
+const loadMainDashboardDataSilent = useCallback(
+  async (hId: string) => {
+    await Promise.all([
+      loadAvailabilityData(hId, true),
+      loadSwapRequests(hId, true),
+    ]);
+  },
+  [loadAvailabilityData, loadSwapRequests]
+);
+
+const scheduleAvailabilityRefresh = useCallback(
+  (hId: string) => {
+    if (availabilityRefreshTimerRef.current) {
+      clearTimeout(availabilityRefreshTimerRef.current);
+    }
+
+    availabilityRefreshTimerRef.current = setTimeout(() => {
+  void loadAvailabilityData(hId, true);
+}, 600);
+  },
+  [loadAvailabilityData]
+);
+
+const scheduleSwapRefresh = useCallback(
+  (hId: string) => {
+    if (swapRefreshTimerRef.current) {
+      clearTimeout(swapRefreshTimerRef.current);
+    }
+
+    swapRefreshTimerRef.current = setTimeout(() => {
+  void loadSwapRequests(hId, true);
+}, 600);
+  },
+  [loadSwapRequests]
+);
+
+const loadBackgroundDashboardData = useCallback(
+  async (hId: string, userId: string) => {
+    const { data: memberships, error: membershipsError } = await supabase
+      .from('hospital_users')
+      .select('hospital_id, role, is_admin, hospitals(name)')
+      .eq('user_id', userId);
+
+    if (membershipsError) {
+      console.error('Erro ao carregar hospitais do admin:', membershipsError);
+      setOtherHospitalAlerts([]);
+      setConflictCount(0);
+      setConflictTargetMonth(null);
+      setConflictTargetYear(null);
+      setOtherAlertsLoading(false);
+      return;
+    }
+
+    const adminHospitalIds = (memberships ?? [])
+      .filter((m: any) => {
+        return m?.is_admin === true || m?.role === 'admin' || m?.role === 'coordenador';
+      })
+      .map((m: any) => m.hospital_id);
+
+    await Promise.all([
+      loadOtherHospitalAlerts(hId, memberships ?? []),
+      loadConflictCount(adminHospitalIds),
+    ]);
+  },
+  [loadOtherHospitalAlerts, loadConflictCount]
+);
 
 const generateDailyShiftMessage = useCallback(
   async (date?: string) => {
@@ -730,10 +801,19 @@ const generateDailyShiftMessage = useCallback(
 );
 
 useEffect(() => {
+if (hasInitializedRef.current) return;
+hasInitializedRef.current = true;
+
   async function init() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
+    if (!user) {
+  setLoading(false);
+  router.push('/login');
+  return;
+}
+
+setCurrentUserId(user.id);
 
     // 1) tenta pegar hospital já selecionado
     const storedHospitalId =
@@ -747,51 +827,60 @@ useEffect(() => {
       return;
     }
 
-    // 2) 🔒 BLOQUEIO: só admin/coordenador do hospital pode ver dashboard
-    const { data: membership, error: memErr } = await supabase
-      .from('hospital_users')
-      .select('role, is_admin')
-      .eq('user_id', user.id)
-      .eq('hospital_id', storedHospitalId)
-      .maybeSingle();
+    // 2) Carrega acesso, hospital e perfil em paralelo
+const [membershipResult, hospitalResult, profileResult] = await Promise.all([
+  supabase
+    .from('hospital_users')
+    .select('role, is_admin')
+    .eq('user_id', user.id)
+    .eq('hospital_id', storedHospitalId)
+    .maybeSingle(),
 
-    if (memErr) {
-      console.error('Erro ao checar role:', memErr);
-      setLoading(false);
-      router.replace('/medico');
-      return;
-    }
+  supabase
+    .from('hospitals')
+    .select('id, name')
+    .eq('id', storedHospitalId)
+    .maybeSingle(),
 
-    const isAllowed =
-      membership?.is_admin === true ||
-      membership?.role === 'admin' ||
-      membership?.role === 'coordenador';
+  supabase
+    .from('users')
+    .select('full_name, email')
+    .eq('id', user.id)
+    .maybeSingle(),
+]);
 
-    if (!isAllowed) {
-      setLoading(false);
-      router.replace('/medico');
-      return;
-    }
+const { data: membership, error: memErr } = membershipResult;
+const { data: hosp, error: hospError } = hospitalResult;
+const { data: profile, error: profileError } = profileResult;
 
-    // 3) carrega hospital pelo ID selecionado
-    const { data: hosp, error: hospError } = await supabase
-      .from('hospitals')
-      .select('id, name')
-      .eq('id', storedHospitalId)
-      .maybeSingle();
+if (memErr) {
+  console.error('Erro ao checar role:', memErr);
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
 
-    if (hospError || !hosp) {
-      setErrorMsg('Não foi possível identificar o hospital selecionado.');
-      setLoading(false);
-      return;
-    }
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin' ||
+  membership?.role === 'coordenador';
 
-    // 4) carrega nome do usuário logado
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('full_name, email')
-      .eq('id', user.id)
-      .maybeSingle();
+if (!isAllowed) {
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
+
+if (hospError || !hosp) {
+  console.error('Erro ao carregar hospital:', hospError);
+  setErrorMsg('Não foi possível identificar o hospital selecionado.');
+  setLoading(false);
+  return;
+}
+
+if (profileError) {
+  console.error('Erro ao carregar perfil do usuário:', profileError);
+}
 
     // 5) aplica
     setHospitalId(hosp.id);
@@ -802,23 +891,17 @@ useEffect(() => {
       window.localStorage.setItem(`activeHospitalId:${user.id}`, hosp.id);
     }
 
-            await Promise.all([
-  loadAvailabilityData(hosp.id),
-  loadSwapRequests(hosp.id),
-]);
+            setLoading(false);
 
-setLoading(false);
+void loadMainDashboardData(hosp.id);
 
-void loadOtherHospitalAlerts(hosp.id, user.id);
-void loadConflictCount(user.id);
+void loadBackgroundDashboardData(hosp.id, user.id);
   }
   init();
 }, [
   router,
-  loadAvailabilityData,
-  loadSwapRequests,
-  loadOtherHospitalAlerts,
-  loadConflictCount,
+  loadMainDashboardData,
+  loadBackgroundDashboardData,
 ]);
   useEffect(() => {
   if (!hospitalId) return;
@@ -833,9 +916,9 @@ void loadConflictCount(user.id);
         table: 'availability',
         filter: `hospital_id=eq.${hospitalId}`,
       },
-      () => {
-        void loadAvailabilityData(hospitalId);
-      }
+() => {
+  scheduleAvailabilityRefresh(hospitalId);
+}
     )
     .on(
       'postgres_changes',
@@ -845,16 +928,24 @@ void loadConflictCount(user.id);
         table: 'shift_swap_requests',
         filter: `hospital_id=eq.${hospitalId}`,
       },
-      () => {
-        void loadSwapRequests(hospitalId);
-      }
+() => {
+  scheduleSwapRefresh(hospitalId);
+}
     )
     .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [hospitalId, loadAvailabilityData, loadSwapRequests]);
+return () => {
+  if (availabilityRefreshTimerRef.current) {
+    clearTimeout(availabilityRefreshTimerRef.current);
+  }
+
+  if (swapRefreshTimerRef.current) {
+    clearTimeout(swapRefreshTimerRef.current);
+  }
+
+  supabase.removeChannel(channel);
+};
+}, [hospitalId, scheduleAvailabilityRefresh, scheduleSwapRefresh]);
 
   async function copyDailyShiftMessage() {
     if (!dailyMessageText.trim()) {
@@ -934,27 +1025,41 @@ async function openMessageModal() {
     }
   }
 
-  async function openHospitalDashboard(targetHospitalId: string) {
+  async function openHospitalDashboard(targetHospitalId: string, targetHospitalName?: string) {
+  if (!currentUserId) {
+    router.push('/login');
+    return;
+  }
+
+  setSwitchingHospitalId(targetHospitalId);
+  setOtherAlertsLoading(true);
+
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(`activeHospitalId:${user.id}`, targetHospitalId);
-      window.location.href = '/dashboard';
-      return;
+      window.localStorage.setItem(`activeHospitalId:${currentUserId}`, targetHospitalId);
     }
 
-    router.push('/dashboard');
+    setErrorMsg(null);
+    setHospitalId(targetHospitalId);
+    setHospitalName(targetHospitalName ?? 'Hospital');
+
+    setNotifications([]);
+    setSwapRequests([]);
+    setOtherHospitalAlerts([]);
+    setDoctorOptions([]);
+    setTargetUserId('');
+    setConflictCount(0);
+    setConflictTargetMonth(null);
+    setConflictTargetYear(null);
+
+    void loadMainDashboardDataSilent(targetHospitalId);
+    void loadBackgroundDashboardData(targetHospitalId, currentUserId);
   } catch (e) {
     console.error('Erro ao trocar hospital ativo:', e);
     alert('Não foi possível abrir o hospital selecionado.');
+    setOtherAlertsLoading(false);
+  } finally {
+    setSwitchingHospitalId(null);
   }
 }
 
@@ -978,12 +1083,7 @@ async function openMessageModal() {
     );
   }
 
-  const totalOtherHospitalPending = otherHospitalAlerts.reduce(
-    (sum, item) => sum + item.awaiting_confirmation_count,
-    0
-  );
-
-const coordinationPendingSwaps = swapRequests.filter((request) =>
+  const coordinationPendingSwaps = swapRequests.filter((request) =>
   isAwaitingCoordination(request)
 );
 
@@ -1356,15 +1456,17 @@ const coordinationPendingSwaps = swapRequests.filter((request) =>
   </p>
 </div>
 
-                <button
-                  onClick={() => {
-                    void loadAvailabilityData(hospitalId!);
-                    void loadSwapRequests(hospitalId!);
-                  }}
-                  className="rounded-2xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-200"
-                >
-                  Atualizar
-                </button>
+<button
+onClick={() => {
+  if (!hospitalId || !currentUserId) return;
+
+  void loadMainDashboardDataSilent(hospitalId);
+  void loadBackgroundDashboardData(hospitalId, currentUserId);
+}}
+  className="rounded-2xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-200"
+>
+  Atualizar
+</button>
               </div>
 
               <div className="mt-1 space-y-4">
@@ -1564,12 +1666,13 @@ const coordinationPendingSwaps = swapRequests.filter((request) =>
                           </p>
                         </div>
 
-                        <button
-                          onClick={() => openHospitalDashboard(item.hospital_id)}
-                          className="rounded-2xl bg-white px-3 py-2 text-[10px] font-black text-slate-700 shadow-sm whitespace-nowrap"
-                        >
-                          Abrir
-                        </button>
+<button
+  onClick={() => openHospitalDashboard(item.hospital_id, item.hospital_name)}
+  disabled={switchingHospitalId === item.hospital_id}
+  className="rounded-2xl bg-white px-3 py-2 text-[10px] font-black text-slate-700 shadow-sm whitespace-nowrap disabled:opacity-60"
+>
+  {switchingHospitalId === item.hospital_id ? 'Abrindo...' : 'Abrir'}
+</button>
                       </div>
                     </li>
                   ))}

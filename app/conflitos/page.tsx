@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -81,6 +81,10 @@ function ConflitosPageContent() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
+  const [adminHospitalIds, setAdminHospitalIds] = useState<string[]>([]);
+  const [initialized, setInitialized] = useState(false);
+  const conflictsRequestIdRef = useRef(0);
+
   const today = new Date();
 
   const monthParam = Number(searchParams.get('month'));
@@ -98,8 +102,6 @@ function ConflitosPageContent() {
 
   const [selectedMonth, setSelectedMonth] = useState<number>(initialMonth);
   const [selectedYear, setSelectedYear] = useState<number>(initialYear);
-
-  const [adminHospitalIds, setAdminHospitalIds] = useState<string[]>([]);
 
   const dateRange = useMemo(() => {
     const start = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
@@ -128,7 +130,7 @@ function ConflitosPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    async function loadConflicts() {
+    async function initAdminHospitals() {
       setLoading(true);
       setErrorMsg(null);
 
@@ -138,6 +140,7 @@ function ConflitosPageContent() {
         } = await supabase.auth.getUser();
 
         if (!user) {
+          setLoading(false);
           router.push('/login');
           return;
         }
@@ -149,6 +152,9 @@ function ConflitosPageContent() {
 
         if (memError) {
           setErrorMsg(memError.message);
+          setAdminHospitalIds([]);
+          setConflicts([]);
+          setInitialized(true);
           setLoading(false);
           return;
         }
@@ -158,14 +164,43 @@ function ConflitosPageContent() {
         });
 
         const hospitalIds = adminMemberships.map((m) => m.hospital_id);
+
         setAdminHospitalIds(hospitalIds);
+        setInitialized(true);
 
         if (hospitalIds.length === 0) {
           setConflicts([]);
           setLoading(false);
-          return;
         }
+      } catch (e: any) {
+        setErrorMsg(e?.message ?? 'Erro ao carregar hospitais do administrador.');
+        setAdminHospitalIds([]);
+        setConflicts([]);
+        setInitialized(true);
+        setLoading(false);
+      }
+    }
 
+    initAdminHospitals();
+  }, [router]);
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    async function loadConflicts() {
+      const requestId = conflictsRequestIdRef.current + 1;
+      conflictsRequestIdRef.current = requestId;
+
+      setLoading(true);
+      setErrorMsg(null);
+
+      if (adminHospitalIds.length === 0) {
+        setConflicts([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
         const { data: shiftRows, error: shiftError } = await supabase
           .from('shifts')
           .select(`
@@ -177,14 +212,19 @@ function ConflitosPageContent() {
             hospitals(name),
             users:doctor_user_id(full_name, email)
           `)
-          .in('hospital_id', hospitalIds)
+          .in('hospital_id', adminHospitalIds)
           .gte('date', dateRange.start)
           .lt('date', dateRange.end)
           .not('doctor_user_id', 'is', null)
           .in('period', ['manha', 'tarde', 'noite']);
 
+        if (requestId !== conflictsRequestIdRef.current) {
+          return;
+        }
+
         if (shiftError) {
           setErrorMsg(shiftError.message);
+          setConflicts([]);
           setLoading(false);
           return;
         }
@@ -209,7 +249,10 @@ function ConflitosPageContent() {
         const nextConflicts: ConflictItem[] = [];
 
         for (const [, group] of grouped) {
-          const uniqueHospitalsMap = new Map<string, { hospital_id: string; hospital_name: string }>();
+          const uniqueHospitalsMap = new Map<
+            string,
+            { hospital_id: string; hospital_name: string }
+          >();
 
           for (const row of group) {
             uniqueHospitalsMap.set(row.hospital_id, {
@@ -230,7 +273,9 @@ function ConflitosPageContent() {
             date: base.date,
             period: base.period,
             hospitals: uniqueHospitals.sort((a, b) =>
-              a.hospital_name.localeCompare(b.hospital_name, 'pt-BR', { sensitivity: 'base' })
+              a.hospital_name.localeCompare(b.hospital_name, 'pt-BR', {
+                sensitivity: 'base',
+              })
             ),
           });
         }
@@ -238,19 +283,26 @@ function ConflitosPageContent() {
         nextConflicts.sort((a, b) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date);
           if (a.period !== b.period) return a.period.localeCompare(b.period);
-          return a.doctor_name.localeCompare(b.doctor_name, 'pt-BR', { sensitivity: 'base' });
+          return a.doctor_name.localeCompare(b.doctor_name, 'pt-BR', {
+            sensitivity: 'base',
+          });
         });
 
         setConflicts(nextConflicts);
       } catch (e: any) {
-        setErrorMsg(e?.message ?? 'Erro ao carregar conflitos.');
+        if (requestId === conflictsRequestIdRef.current) {
+          setErrorMsg(e?.message ?? 'Erro ao carregar conflitos.');
+          setConflicts([]);
+        }
       } finally {
-        setLoading(false);
+        if (requestId === conflictsRequestIdRef.current) {
+          setLoading(false);
+        }
       }
     }
 
     loadConflicts();
-  }, [router, dateRange.start, dateRange.end]);
+  }, [initialized, adminHospitalIds, dateRange.start, dateRange.end]);
 
   const monthOptions = [
     { value: 1, label: 'Janeiro' },

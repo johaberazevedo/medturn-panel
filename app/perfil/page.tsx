@@ -18,14 +18,30 @@ export default function PerfilPage() {
 
   useEffect(() => {
     async function getUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      setUserEmail(user.email ?? '');
-      setUserName(user.user_metadata?.full_name ?? 'Usuário');
-      setLoading(false);
+      const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  setLoading(false);
+  router.push('/login');
+  return;
+}
+
+setUserEmail(user.email ?? '');
+
+const { data: profile, error: profileError } = await supabase
+  .from('users')
+  .select('full_name')
+  .eq('id', user.id)
+  .maybeSingle();
+
+if (profileError) {
+  console.error('Erro ao carregar perfil:', profileError);
+}
+
+setUserName(profile?.full_name ?? user.user_metadata?.full_name ?? user.email ?? 'Usuário');
+setLoading(false);
     }
     getUser();
   }, [router]);
@@ -169,26 +185,30 @@ export default function PerfilPage() {
               <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">
                 Nova senha
               </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
-                placeholder="Mínimo 6 caracteres"
-              />
+<input
+  type="password"
+  value={newPassword}
+  onChange={(e) => setNewPassword(e.target.value)}
+  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
+  placeholder="Mínimo 6 caracteres"
+  minLength={6}
+  required
+/>
             </div>
 
             <div>
               <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">
                 Confirmar nova senha
               </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
-                placeholder="Digite novamente"
-              />
+<input
+  type="password"
+  value={confirmPassword}
+  onChange={(e) => setConfirmPassword(e.target.value)}
+  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-[#40C0A2]"
+  placeholder="Digite novamente"
+  minLength={6}
+  required
+/>
             </div>
 
             {message && (
@@ -205,7 +225,7 @@ export default function PerfilPage() {
 
             <button
               type="submit"
-              disabled={saving || !newPassword}
+              disabled={saving || !newPassword || !confirmPassword}
               className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95 disabled:opacity-50"
             >
               {saving ? 'Salvando...' : 'Atualizar senha'}

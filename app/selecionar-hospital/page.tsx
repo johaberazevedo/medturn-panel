@@ -19,22 +19,31 @@ function SelecionarHospitalContent() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<HospitalPickRow[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+const [userId, setUserId] = useState<string | null>(null);
+const [choosingHospitalId, setChoosingHospitalId] = useState<string | null>(null);
 
   const rawRedirect = searchParams.get('redirect');
   const redirect = rawRedirect && rawRedirect.startsWith('/') ? rawRedirect : '/dashboard';
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
+useEffect(() => {
+  async function load() {
+    setLoading(true);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, role, is_admin, hospitals(name)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    setUserId(user.id);
+
+    const { data, error } = await supabase
+  .from('hospital_users')
+  .select('hospital_id, role, is_admin, hospitals(name)')
+  .eq('user_id', user.id);
 
       if (error) {
         console.error('Erro ao carregar hospitais:', error);
@@ -43,10 +52,19 @@ function SelecionarHospitalContent() {
         return;
       }
 
-      const formatted = (data ?? []).map((item: any) => ({
-        ...item,
-        hospitals: Array.isArray(item.hospitals) ? item.hospitals[0] : item.hospitals,
-      })) as HospitalPickRow[];
+      const formatted = (data ?? [])
+  .map((item: any) => ({
+    ...item,
+    hospitals: Array.isArray(item.hospitals) ? item.hospitals[0] : item.hospitals,
+  }))
+  .sort((a: HospitalPickRow, b: HospitalPickRow) => {
+    const nameA = a.hospitals?.name ?? 'Hospital';
+    const nameB = b.hospitals?.name ?? 'Hospital';
+
+    return nameA.localeCompare(nameB, 'pt-BR', {
+      sensitivity: 'base',
+    });
+  }) as HospitalPickRow[];
 
       if (!formatted.length) {
         setErrorMsg('Você ainda não está vinculado a nenhum hospital.');
@@ -59,31 +77,41 @@ function SelecionarHospitalContent() {
     load();
   }, [router]);
 
-  async function choose(hospitalId: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
-
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(`activeHospitalId:${user.id}`, hospitalId);
-      window.localStorage.setItem('activeHospitalId', hospitalId);
-    }
-
-    let next = redirect;
-
-    if (typeof window !== 'undefined') {
-      try {
-        const url = new URL(redirect, window.location.origin);
-        if (!url.searchParams.get('hospitalId')) {
-          url.searchParams.set('hospitalId', hospitalId);
-        }
-        next = url.pathname + url.search + url.hash;
-      } catch {
-        next = redirect;
-      }
-    }
-
-    router.push(next);
+  function choose(hospitalId: string) {
+  if (!userId) {
+    router.push('/login');
+    return;
   }
+
+  setChoosingHospitalId(hospitalId);
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(`activeHospitalId:${userId}`, hospitalId);
+    window.localStorage.setItem('activeHospitalId', hospitalId);
+  }
+
+  let next = redirect;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(redirect, window.location.origin);
+
+      const shouldAttachHospitalId =
+        url.pathname !== '/dashboard' &&
+        !url.searchParams.get('hospitalId');
+
+      if (shouldAttachHospitalId) {
+        url.searchParams.set('hospitalId', hospitalId);
+      }
+
+      next = url.pathname + url.search + url.hash;
+    } catch {
+      next = redirect;
+    }
+  }
+
+  router.push(next);
+}
 
   if (loading) {
     return (
@@ -151,11 +179,12 @@ function SelecionarHospitalContent() {
                   (r.is_admin ? 'Admin' : (r.role ? String(r.role) : 'Membro'));
 
                 return (
-                  <button
-                    key={r.hospital_id}
-                    onClick={() => choose(r.hospital_id)}
-                    className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left transition hover:border-[#40C0A2]/30 hover:bg-[#40C0A2]/5 active:scale-[0.99]"
-                  >
+<button
+  key={r.hospital_id}
+  onClick={() => choose(r.hospital_id)}
+  disabled={choosingHospitalId !== null}
+  className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left transition hover:border-[#40C0A2]/30 hover:bg-[#40C0A2]/5 active:scale-[0.99] disabled:opacity-60"
+>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -172,7 +201,7 @@ function SelecionarHospitalContent() {
                       </div>
 
                       <span className="rounded-2xl border border-slate-100 bg-white px-3 py-1 text-[10px] font-black text-slate-500 shadow-sm">
-                        {roleLabel}
+                        {choosingHospitalId === r.hospital_id ? 'Abrindo...' : roleLabel}
                       </span>
                     </div>
                   </button>

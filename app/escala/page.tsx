@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation'; // Adicionado useSearchParams
-import { useEffect, useState, Suspense } from 'react';        // Adicionado Suspense
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react';      // Adicionado Suspense
 import { supabase } from '@/lib/supabaseClient';
 
 type ShiftRow = {
@@ -11,11 +11,6 @@ type ShiftRow = {
   is_chief: boolean;
   badge: string | null; // PATCH
   users: { full_name: string | null } | null;
-};
-
-type Membership = {
-  hospital_id: string;
-  hospitals: { name: string | null } | null;
 };
 
 type HospitalShortcut = {
@@ -42,6 +37,19 @@ function nextMonthStartISO(year: number, monthIndex: number) {
   return `${y}-${pad2(m)}-01`;
 }
 
+function sortShiftRows(a: ShiftRow, b: ShiftRow) {
+  if (a.is_chief && !b.is_chief) return -1;
+  if (!a.is_chief && b.is_chief) return 1;
+
+  const aHasBadge = !!(a.badge ?? '').trim();
+  const bHasBadge = !!(b.badge ?? '').trim();
+
+  if (aHasBadge && !bHasBadge) return -1;
+  if (!aHasBadge && bHasBadge) return 1;
+
+  return 0;
+}
+
 // Config de capacidade por período
 const PERIOD_CONFIG: {
   key: 'manha' | 'tarde' | 'noite' | '24h';
@@ -61,9 +69,13 @@ function EscalaMensalContent() {
   const searchParams = useSearchParams(); // 2. Pegamos os parametros da URL
 
   const [hospitalId, setHospitalId] = useState<string | null>(null);
-  const [hospitalName, setHospitalName] = useState<string>('');
-  const [userName, setUserName] = useState<string | null>(null);
-  const [hospitalShortcuts, setHospitalShortcuts] = useState<HospitalShortcut[]>([]);
+const [hospitalName, setHospitalName] = useState<string>('');
+const [userName, setUserName] = useState<string | null>(null);
+const [hospitalShortcuts, setHospitalShortcuts] = useState<HospitalShortcut[]>([]);
+const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const [switchingHospitalId, setSwitchingHospitalId] = useState<string | null>(null);
+const [shiftsLoading, setShiftsLoading] = useState(false);
+const shiftsRequestIdRef = useRef(0);
 
   // 3. Lógica para definir Data Inicial (URL ou Hoje)
   const dateParam = searchParams.get('date');
@@ -179,9 +191,11 @@ function EscalaMensalContent() {
     '24h': 'bg-orange-100 text-orange-800 border-orange-200',
   };
 
-  const monthName = new Date(year, month).toLocaleDateString('pt-BR', {
+  const monthName = useMemo(() => {
+  return new Date(year, month).toLocaleDateString('pt-BR', {
     month: 'long',
   });
+}, [year, month]);
 
   function getDaysMatrix(year: number, month: number) {
     const first = new Date(year, month, 1);
@@ -214,29 +228,51 @@ function EscalaMensalContent() {
     return matrix;
   }
 
-  async function loadShifts(hId: string, y: number, m: number) {
-    const monthStr = String(m + 1).padStart(2, '0');
-    const monthStart = `${y}-${monthStr}-01`;
-    const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
-    const monthEnd = `${y}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
+  async function loadShifts(hId: string, y: number, m: number, silent = false) {
+  const requestId = shiftsRequestIdRef.current + 1;
+  shiftsRequestIdRef.current = requestId;
+
+  if (!silent) {
+    setShiftsLoading(true);
+  }
+
+  try {
+    const monthStart = monthStartISO(y, m);
+    const monthEndExclusive = nextMonthStartISO(y, m);
 
     const { data, error } = await supabase
       .from('shifts')
-      .select('id, date, period, is_chief, badge, users(full_name)') // PATCH
+      .select('id, date, period, is_chief, badge, users(full_name)')
       .eq('hospital_id', hId)
       .gte('date', monthStart)
-      .lte('date', monthEnd)
+      .lt('date', monthEndExclusive)
       .order('date');
 
-    if (!error && data) {
-      const formattedShifts = data.map((shift: any) => ({
-        ...shift,
-        users: Array.isArray(shift.users) ? shift.users[0] : shift.users,
-      }));
+    if (requestId !== shiftsRequestIdRef.current) {
+      return;
+    }
 
-      setShifts(formattedShifts as ShiftRow[]);
+    if (error) {
+      console.error('Erro ao carregar escala:', error);
+      return;
+    }
+
+    const formattedShifts = (data ?? []).map((shift: any) => ({
+      ...shift,
+      users: Array.isArray(shift.users) ? shift.users[0] : shift.users,
+    }));
+
+    setShifts(formattedShifts as ShiftRow[]);
+  } catch (e) {
+    if (requestId === shiftsRequestIdRef.current) {
+      console.error('Erro inesperado ao carregar escala:', e);
+    }
+  } finally {
+    if (!silent && requestId === shiftsRequestIdRef.current) {
+      setShiftsLoading(false);
     }
   }
+}
 
   function handleMonthChange(delta: number) {
     let newMonth = month + delta;
@@ -257,125 +293,205 @@ function EscalaMensalContent() {
     if (hospitalId) loadShifts(hospitalId, newYear, newMonth);
   }
 
-  function handleSwitchHospital(targetHospitalId: string) {
-    if (typeof window === 'undefined') return;
-
-    const currentPathDate = `${year}-${pad2(month + 1)}-01`;
-
-    supabase.auth.getUser().then(({ data }) => {
-      const uid = data.user?.id;
-
-      if (uid) {
-        window.localStorage.setItem(`activeHospitalId:${uid}`, targetHospitalId);
-      }
-
-      window.localStorage.setItem('activeHospitalId', targetHospitalId);
-      router.push(`/escala?date=${currentPathDate}`);
-      window.location.href = `/escala?date=${currentPathDate}`;
-    });
+  async function handleSwitchHospital(targetHospitalId: string, targetHospitalName?: string) {
+  if (!currentUserId) {
+    router.push('/login');
+    return;
   }
 
-  useEffect(() => {
-    async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  if (targetHospitalId === hospitalId) return;
 
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+  setSwitchingHospitalId(targetHospitalId);
+  setShiftsLoading(true);
 
-      const storedHospitalId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
-          : null;
-
-      if (!storedHospitalId) {
-        router.push('/selecionar-hospital');
-        return;
-      }
-
-      // 🔒 Só admin/coordenador pode acessar a página da escala
-      const { data: membership, error: memErr } = await supabase
-        .from('hospital_users')
-        .select('role, is_admin')
-        .eq('user_id', user.id)
-        .eq('hospital_id', storedHospitalId)
-        .maybeSingle();
-
-      const { data: shortcutRows } = await supabase
-        .from('hospital_users')
-        .select('hospital_id, role, is_admin, hospitals(name)')
-        .eq('user_id', user.id);
-
-      const shortcuts = (shortcutRows ?? [])
-        .filter((row: any) => {
-          return (
-            row.is_admin === true ||
-            row.role === 'admin' ||
-            row.role === 'coordenador'
-          );
-        })
-        .map((row: any) => {
-          const hosp = Array.isArray(row.hospitals) ? row.hospitals[0] : row.hospitals;
-
-          return {
-            id: row.hospital_id as string,
-            name: (hosp?.name ?? 'Hospital') as string,
-          };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
-
-      setHospitalShortcuts(shortcuts);
-
-      if (memErr) {
-        console.error('Erro ao checar role:', memErr);
-        router.replace('/medico');
-        return;
-      }
-
-      const isAllowed =
-        membership?.is_admin === true ||
-        membership?.role === 'admin' ||
-        membership?.role === 'coordenador';
-
-      if (!isAllowed) {
-        router.replace('/medico');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      setUserName(profile?.full_name ?? user.email ?? 'Usuário');
-
-      const { data: hosp, error: hospError } = await supabase
-        .from('hospitals')
-        .select('id, name')
-        .eq('id', storedHospitalId)
-        .maybeSingle();
-
-      if (hospError || !hosp) {
-        setLoading(false);
-        return;
-      }
-
-      setHospitalId(hosp.id);
-      setHospitalName(hosp.name ?? 'Hospital');
-
-      await loadShifts(hosp.id, year, month);
-      setLoading(false);
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`activeHospitalId:${currentUserId}`, targetHospitalId);
+      window.localStorage.setItem('activeHospitalId', targetHospitalId);
     }
 
-    init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setHospitalId(targetHospitalId);
+    setHospitalName(targetHospitalName ?? 'Hospital');
+    setShifts([]);
 
-  const matrix = getDaysMatrix(year, month);
+    await loadShifts(targetHospitalId, year, month, true);
+  } catch (e) {
+    console.error('Erro ao trocar hospital da escala:', e);
+    alert('Não foi possível trocar o hospital.');
+  } finally {
+    setSwitchingHospitalId(null);
+    setShiftsLoading(false);
+  }
+}
+
+  useEffect(() => {
+  async function init() {
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setLoading(false);
+      router.push('/login');
+      return;
+    }
+
+    setCurrentUserId(user.id);
+
+    const storedHospitalId =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
+        : null;
+
+    if (!storedHospitalId) {
+      setLoading(false);
+      router.push('/selecionar-hospital');
+      return;
+    }
+
+    const [membershipResult, shortcutResult, profileResult, hospitalResult] =
+      await Promise.all([
+        supabase
+          .from('hospital_users')
+          .select('role, is_admin')
+          .eq('user_id', user.id)
+          .eq('hospital_id', storedHospitalId)
+          .maybeSingle(),
+
+        supabase
+          .from('hospital_users')
+          .select('hospital_id, role, is_admin, hospitals(name)')
+          .eq('user_id', user.id),
+
+        supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', user.id)
+          .maybeSingle(),
+
+        supabase
+          .from('hospitals')
+          .select('id, name')
+          .eq('id', storedHospitalId)
+          .maybeSingle(),
+      ]);
+
+    const { data: membership, error: memErr } = membershipResult;
+    const { data: shortcutRows, error: shortcutError } = shortcutResult;
+    const { data: profile } = profileResult;
+    const { data: hosp, error: hospError } = hospitalResult;
+
+    if (memErr) {
+      console.error('Erro ao checar role:', memErr);
+      setLoading(false);
+      router.replace('/medico');
+      return;
+    }
+
+    const isAllowed =
+      membership?.is_admin === true ||
+      membership?.role === 'admin' ||
+      membership?.role === 'coordenador';
+
+    if (!isAllowed) {
+      setLoading(false);
+      router.replace('/medico');
+      return;
+    }
+
+    if (hospError || !hosp) {
+      console.error('Erro ao carregar hospital:', hospError);
+      setLoading(false);
+      return;
+    }
+
+    if (shortcutError) {
+      console.error('Erro ao carregar atalhos de hospitais:', shortcutError);
+    }
+
+    const shortcuts = (shortcutRows ?? [])
+      .filter((row: any) => {
+        return (
+          row.is_admin === true ||
+          row.role === 'admin' ||
+          row.role === 'coordenador'
+        );
+      })
+      .map((row: any) => {
+        const hospRel = Array.isArray(row.hospitals)
+          ? row.hospitals[0]
+          : row.hospitals;
+
+        return {
+          id: row.hospital_id as string,
+          name: (hospRel?.name ?? 'Hospital') as string,
+        };
+      })
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+      );
+
+    setHospitalShortcuts(shortcuts);
+    setUserName(profile?.full_name ?? user.email ?? 'Usuário');
+    setHospitalId(hosp.id);
+    setHospitalName(hosp.name ?? 'Hospital');
+
+    await loadShifts(hosp.id, year, month, true);
+
+    setLoading(false);
+  }
+
+  init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+  const matrix = useMemo(() => {
+  return getDaysMatrix(year, month);
+}, [year, month]);
+
+const shiftsByDate = useMemo(() => {
+  const map = new Map<
+    string,
+    {
+      counts: Record<'manha' | 'tarde' | 'noite' | '24h', number>;
+      byPeriod: Record<'manha' | 'tarde' | 'noite' | '24h', ShiftRow[]>;
+    }
+  >();
+
+  for (const shift of shifts) {
+    if (!map.has(shift.date)) {
+      map.set(shift.date, {
+        counts: {
+          manha: 0,
+          tarde: 0,
+          noite: 0,
+          '24h': 0,
+        },
+        byPeriod: {
+          manha: [],
+          tarde: [],
+          noite: [],
+          '24h': [],
+        },
+      });
+    }
+
+    const dayData = map.get(shift.date)!;
+
+    dayData.counts[shift.period]++;
+    dayData.byPeriod[shift.period].push(shift);
+  }
+
+  for (const dayData of map.values()) {
+    for (const period of PERIOD_CONFIG) {
+      dayData.byPeriod[period.key].sort(sortShiftRows);
+    }
+  }
+
+  return map;
+}, [shifts]);
 
   function periodCountBadge(
     period: 'manha' | 'tarde' | 'noite' | '24h',
@@ -580,9 +696,9 @@ function EscalaMensalContent() {
                   <button
                     key={h.id}
                     type="button"
-                    onClick={() => {
-                      if (!active) handleSwitchHospital(h.id);
-                    }}
+onClick={() => {
+  if (!active) void handleSwitchHospital(h.id, h.name);
+}}
                     className={`w-full rounded-2xl border px-3 py-3 text-left transition active:scale-[0.99] ${
                       active
                         ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
@@ -590,13 +706,18 @@ function EscalaMensalContent() {
                     }`}
                   >
                     <p className="text-xs font-black leading-tight">
-                      {h.name}
-                    </p>
-                    {active && (
-                      <p className="mt-1 text-[10px] font-semibold text-slate-300">
-                        Atual
-                      </p>
-                    )}
+  {h.name}
+</p>
+
+{switchingHospitalId === h.id ? (
+  <p className={`mt-1 text-[10px] font-semibold ${active ? 'text-slate-300' : 'text-slate-400'}`}>
+    Abrindo...
+  </p>
+) : active ? (
+  <p className="mt-1 text-[10px] font-semibold text-slate-300">
+    Atual
+  </p>
+) : null}
                   </button>
                 );
               })}
@@ -662,16 +783,16 @@ function EscalaMensalContent() {
                     <button
                       key={h.id}
                       type="button"
-                      onClick={() => {
-                        if (!active) handleSwitchHospital(h.id);
-                      }}
+onClick={() => {
+  if (!active) void handleSwitchHospital(h.id, h.name);
+}}
                       className={`rounded-2xl border px-3 py-2 text-[11px] font-black whitespace-nowrap transition active:scale-95 ${
                         active
                           ? 'border-slate-950 bg-slate-950 text-white'
                           : 'border-slate-100 bg-slate-50 text-slate-700'
                       }`}
                     >
-                      {h.name}
+                      {switchingHospitalId === h.id ? 'Abrindo...' : h.name}
                     </button>
                   );
                 })}
@@ -692,21 +813,29 @@ function EscalaMensalContent() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleMonthChange(-1)}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
-                >
-                  ◀
-                </button>
+<button
+  onClick={() => handleMonthChange(-1)}
+  disabled={shiftsLoading}
+  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 disabled:opacity-60"
+>
+  ◀
+</button>
 
-                <button
-                  onClick={() => handleMonthChange(1)}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
-                >
-                  ▶
-                </button>
+<button
+  onClick={() => handleMonthChange(1)}
+  disabled={shiftsLoading}
+  className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 disabled:opacity-60"
+>
+  ▶
+</button>
               </div>
             </div>
+
+{shiftsLoading && (
+  <p className="mt-3 text-[11px] font-semibold text-slate-400">
+    Atualizando escala...
+  </p>
+)}
 
             <div className="mt-5 flex flex-col gap-3 rounded-[28px] bg-slate-50 px-4 py-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -781,22 +910,21 @@ function EscalaMensalContent() {
                       ).padStart(2, '0')}`
                     : null;
 
-                const dayShifts = shifts.filter((s) => s.date === iso);
+                const dayData = iso ? shiftsByDate.get(iso) : null;
 
-                const counts: Record<'manha' | 'tarde' | 'noite' | '24h', number> =
-                  {
-                    manha: 0,
-                    tarde: 0,
-                    noite: 0,
-                    '24h': 0,
-                  };
+const counts = dayData?.counts ?? {
+  manha: 0,
+  tarde: 0,
+  noite: 0,
+  '24h': 0,
+};
 
-                dayShifts.forEach((s) => {
-                  if (counts[s.period] !== undefined) {
-                    counts[s.period]++;
-                  }
-                });
-
+const shiftsByPeriod = dayData?.byPeriod ?? {
+  manha: [],
+  tarde: [],
+  noite: [],
+  '24h': [],
+};
                 return (
                   <div
                     key={`${wi}-${di}`}
@@ -824,19 +952,7 @@ function EscalaMensalContent() {
                       <div className="flex flex-col gap-1.5 mt-1">
                         {PERIOD_CONFIG.map((cfg) => {
                           // AQUI ESTÁ A LÓGICA DE ORDENAÇÃO
-                          const shiftsInPeriod = dayShifts
-                            .filter((s) => s.period === cfg.key)
-                            .sort((a, b) => {
-                              if (a.is_chief && !b.is_chief) return -1;
-                              if (!a.is_chief && b.is_chief) return 1;
-
-                              const aHasBadge = !!(a.badge ?? '').trim();
-                              const bHasBadge = !!(b.badge ?? '').trim();
-                              if (aHasBadge && !bHasBadge) return -1;
-                              if (!aHasBadge && bHasBadge) return 1;
-
-                              return 0;
-                            });
+                          const shiftsInPeriod = shiftsByPeriod[cfg.key];
 
                           if (shiftsInPeriod.length === 0) return null;
 
