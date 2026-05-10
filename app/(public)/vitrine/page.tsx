@@ -1,30 +1,30 @@
-"use client"; 
+"use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Menu,
   X,
   ArrowRight,
   BellRing,
-  Building2,
   CalendarDays,
   CheckCircle2,
-  ClipboardList,
-  FileText,
   Repeat,
   ShieldCheck,
   UserCheck,
-  Users,
   Calculator,
-  Layers3,
   Smartphone,
-  MonitorSmartphone,
   Clock3,
   TrendingUp,
   AlertCircle,
-  Wallet,
-  type LucideIcon,
+ClipboardList,
+MessageSquareText,
+RefreshCw,
+Activity,
+MapPin,
+MonitorSmartphone,
+Users,
+type LucideIcon,
 } from "lucide-react";
 
 function Pill({ children }: { children: React.ReactNode }) {
@@ -86,7 +86,7 @@ function StatCard({
         {value}
       </p>
       <p className="mt-2 font-bold text-white">{label}</p>
-      {sub ? <p className="mt-1 text-xs text-zinc-500">{sub}</p> : null}
+      {sub ? <p className="mt-1 text-xs leading-relaxed text-zinc-500">{sub}</p> : null}
     </div>
   );
 }
@@ -103,10 +103,13 @@ function FeatureCard({
   return (
     <div className="group relative overflow-hidden rounded-[32px] border border-white/5 bg-white/[0.02] p-8 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.04] hover:shadow-[0_20px_50px_-25px_rgba(74,226,182,0.35)]">
       <div className="absolute inset-0 bg-gradient-to-br from-[#4AE2B6]/0 to-[#4AE2B6]/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-      <div className="mb-6 inline-flex rounded-2xl bg-[#4AE2B6]/10 p-4 text-[#4AE2B6] transition-colors group-hover:bg-[#4AE2B6] group-hover:text-[#0C1E1C]">
+
+      <div className="relative z-10 mb-6 inline-flex rounded-2xl bg-[#4AE2B6]/10 p-4 text-[#4AE2B6] transition-colors group-hover:bg-[#4AE2B6] group-hover:text-[#0C1E1C]">
         <Icon size={24} strokeWidth={2} />
       </div>
+
       <h3 className="relative z-10 text-xl font-bold text-white">{title}</h3>
+
       <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-400">
         {desc}
       </p>
@@ -131,30 +134,8 @@ function ResultItem({
         <h3 className="text-[19px] font-bold leading-snug text-white">
           {title}
         </h3>
-        <p className="mt-2 text-[15px] leading-8 text-zinc-400">
-          {desc}
-        </p>
+        <p className="mt-2 text-[15px] leading-7 text-zinc-400">{desc}</p>
       </div>
-    </div>
-  );
-}
-
-function AudienceCard({
-  title,
-  desc,
-  icon: Icon,
-}: {
-  title: string;
-  desc: string;
-  icon: LucideIcon;
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/5 bg-white/[0.02] p-6 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.04]">
-      <div className="mb-5 inline-flex rounded-2xl bg-[#4AE2B6]/10 p-3 text-[#4AE2B6]">
-        <Icon size={22} strokeWidth={2} />
-      </div>
-      <h3 className="text-lg font-bold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-400">{desc}</p>
     </div>
   );
 }
@@ -209,7 +190,9 @@ function PricingCard({
       ) : null}
 
       <div>
-        <h3 className="text-[22px] font-black tracking-tight text-white">{tier}</h3>
+        <h3 className="text-[22px] font-black tracking-tight text-white">
+          {tier}
+        </h3>
         <p className="mt-1.5 text-sm text-zinc-500">{subtitle}</p>
       </div>
 
@@ -230,17 +213,19 @@ function PricingCard({
       </div>
 
       <div className="mt-4 rounded-2xl border border-white/5 bg-[#4AE2B6]/8 p-3">
-        <p className="text-sm font-semibold leading-5 text-white">{valueLine}</p>
+        <p className="text-sm font-semibold leading-5 text-white">
+          {valueLine}
+        </p>
       </div>
 
       <ul className="mt-5 flex-1 space-y-2.5 text-sm leading-5 text-zinc-400">
-        {features.map((f, i) => (
-          <li key={i} className="flex gap-3">
+        {features.map((feature, index) => (
+          <li key={index} className="flex gap-3">
             <CheckCircle2
               size={17}
               className="mt-0.5 shrink-0 text-[#4AE2B6]"
             />
-            <span>{f}</span>
+            <span>{feature}</span>
           </li>
         ))}
       </ul>
@@ -259,159 +244,373 @@ function PricingCard({
   );
 }
 
+function MiniMetric({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning" | "info";
+}) {
+  const toneClass =
+    tone === "success"
+      ? "text-emerald-300 bg-emerald-400/10"
+      : tone === "warning"
+      ? "text-amber-300 bg-amber-400/10"
+      : tone === "info"
+      ? "text-sky-300 bg-sky-400/10"
+      : "text-[#4AE2B6] bg-[#4AE2B6]/10";
+
+  return (
+    <div className="rounded-2xl border border-white/5 bg-black/20 p-4">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className={`mt-2 inline-flex rounded-xl px-3 py-1 text-sm font-black ${toneClass}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function DashboardMock() {
   return (
-    <div className="relative">
-      <div className="absolute -inset-6 rounded-[40px] bg-[#4AE2B6]/10 blur-3xl" />
+    <div className="relative w-full">
+      <div className="absolute -inset-5 rounded-[40px] bg-[#4AE2B6]/10 blur-3xl" />
 
-      <div className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[#0A1A18]/90 p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.7)] backdrop-blur-xl">
-        <div className="mb-5 flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-              MedTurn Dashboard
-            </p>
-            <p className="mt-1 text-sm font-bold text-white">
-              Coordenação · UTI Adulto · Hospital São Lucas
-            </p>
+      <div className="relative overflow-hidden rounded-[34px] border border-white/10 bg-[#0A1A18]/95 p-4 shadow-[0_30px_90px_-35px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <div className="mb-4 flex items-center justify-between rounded-[24px] border border-white/5 bg-white/[0.035] px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4AE2B6]/10 text-[#4AE2B6]">
+              <CalendarDays size={24} />
+            </div>
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#4AE2B6]">
+                MedTurn • Painel administrativo
+              </p>
+              <h3 className="mt-1 text-lg font-black tracking-tight text-white">
+                Hospital São Lucas
+              </h3>
+              <p className="mt-1 text-[10px] font-semibold text-zinc-500">
+                Logado como: Coordenação
+              </p>
+            </div>
           </div>
-          <div className="rounded-xl bg-[#4AE2B6]/12 px-3 py-2 text-xs font-bold text-[#4AE2B6]">
+
+          <span className="hidden rounded-2xl bg-[#4AE2B6]/12 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-[#4AE2B6] sm:inline-flex">
             Online
-          </div>
+          </span>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-[#4AE2B6]/10 p-3 text-[#4AE2B6]">
-                  <CalendarDays size={20} />
-                </div>
+        <div className="grid gap-3 xl:grid-cols-[1.3fr_0.85fr]">
+          <section className="space-y-3">
+            <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-4">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold text-white">Escala da semana</p>
-                  <p className="text-xs text-zinc-500">Seg · Ter · Qua · Qui · Sex</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-[#4AE2B6]">
+                    Ações rápidas
+                  </p>
+                  <h3 className="mt-1 text-base font-black tracking-tight text-white">
+                    Rotina da coordenação
+                  </h3>
                 </div>
-              </div>
-              <span className="text-xs font-semibold text-[#4AE2B6]">
-                Atualizada
-              </span>
-            </div>
 
-            <div className="mt-5 space-y-3">
-              {[
-                ["Segunda", "12 plantões", "2 chefias"],
-                ["Terça", "10 plantões", "1 troca"],
-                ["Quarta", "11 plantões", "sem pendências"],
-              ].map(([day, a, b]) => (
-                <div
-                  key={day}
-                  className="flex items-center justify-between rounded-2xl bg-black/20 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-white">{day}</p>
-                    <p className="text-xs text-zinc-500">{a}</p>
-                  </div>
-                  <span className="text-xs text-zinc-400">{b}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-400">
-                <Repeat size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">Troca pendente</p>
-                <p className="text-xs text-zinc-500">
-                  Aguardando aprovação da coordenação
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-amber-500/10 bg-amber-500/5 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-white">
-                  Noite · UTI Adulto
-                </p>
-                <span className="rounded-full bg-amber-500/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                  Pendente
+                <span className="rounded-2xl bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-zinc-400">
+                  Atualizado
                 </span>
               </div>
 
-              <p className="mt-3 text-sm text-zinc-400">
-                <span className="font-semibold text-white">Dr. João</span> anunciou
-                troca e <span className="font-semibold text-white">Dra. Marina</span>{" "}
-                sinalizou interesse.
+              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {[
+                  {
+                    eyebrow: "Escala",
+                    title: "Escala mensal",
+                    desc: "Visualize e edite plantões.",
+                    tag: "Abrir",
+                    tone: "primary",
+                    icon: CalendarDays,
+                  },
+                  {
+                    eyebrow: "Comunicação",
+                    title: "Mensagem do plantão",
+                    desc: "Texto diário por turno.",
+                    tag: "Gerar",
+                    tone: "default",
+                    icon: MessageSquareText,
+                  },
+                  {
+                    eyebrow: "Financeiro",
+                    title: "Relatório",
+                    desc: "Produção organizada.",
+                    tag: "Abrir",
+                    tone: "default",
+                    icon: Calculator,
+                  },
+                  {
+                    eyebrow: "Segurança",
+                    title: "Ver conflitos",
+                    desc: "Sobreposições detectadas.",
+                    tag: "2",
+                    tone: "warning",
+                    icon: ShieldCheck,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className={`rounded-[22px] border p-3 ${
+                      item.tone === "primary"
+                        ? "border-[#4AE2B6]/15 bg-[#4AE2B6]/8"
+                        : item.tone === "warning"
+                        ? "border-amber-400/15 bg-amber-400/8"
+                        : "border-white/5 bg-black/20"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex gap-2.5">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            item.tone === "warning"
+                              ? "bg-amber-400/10 text-amber-300"
+                              : "bg-[#4AE2B6]/10 text-[#4AE2B6]"
+                          }`}
+                        >
+                          <item.icon size={16} />
+                        </div>
+
+                        <div>
+                          <p
+                            className={`text-[8px] font-black uppercase tracking-widest ${
+                              item.tone === "warning"
+                                ? "text-amber-300"
+                                : "text-[#4AE2B6]"
+                            }`}
+                          >
+                            {item.eyebrow}
+                          </p>
+                          <h4 className="mt-1 text-[13px] font-black text-white">
+                            {item.title}
+                          </h4>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`rounded-xl px-2 py-0.5 text-[8px] font-black ${
+                          item.tone === "warning"
+                            ? "bg-amber-400/15 text-amber-300"
+                            : "bg-white/5 text-zinc-400"
+                        }`}
+                      >
+                        {item.tag}
+                      </span>
+                    </div>
+
+                    <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
+                      {item.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-amber-400/15 bg-amber-400/8 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-amber-300">
+                    Prioridade agora
+                  </p>
+                  <h3 className="mt-1 text-lg font-black tracking-tight text-white">
+                    2 conflito(s) detectado(s)
+                  </h3>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    Possível sobreposição de plantões no próximo mês.
+                  </p>
+                </div>
+
+                <span className="w-fit rounded-2xl bg-amber-400 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#1d1300] shadow-sm">
+                  Ver conflitos
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-[#4AE2B6]">
+                    Guia operacional
+                  </p>
+
+                  <h3 className="mt-1 text-base font-black tracking-tight text-white">
+                    Próximos passos
+                  </h3>
+                </div>
+
+                <div className="grid gap-2 text-[10px] leading-relaxed text-zinc-400 sm:grid-cols-2">
+                  {[
+                    "Organizar escala mensal",
+                    "Solicitar disponibilidade",
+                    "Acompanhar relatório",
+                    "Enviar aviso aos plantonistas",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="flex items-center gap-2 rounded-2xl bg-black/20 px-3 py-1.5"
+                    >
+                      <CheckCircle2 size={12} className="shrink-0 text-[#4AE2B6]" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-[#4AE2B6]">
+                    Central de pendências
+                  </p>
+                  <h3 className="mt-1 text-base font-black tracking-tight text-white">
+                    Trocas e disponibilidade
+                  </h3>
+                </div>
+
+                <RefreshCw size={15} className="text-zinc-500" />
+              </div>
+
+              <div className="mt-3 space-y-2.5">
+                <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/8 px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-white">Dra. Marina</span>
+                    <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-0.5 text-[9px] text-sky-300">
+                      Em processo
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+                    <span className="font-bold text-emerald-300">
+                      ● Dr. João aceitou
+                    </span>{" "}
+                    a troca — clique para confirmar
+                  </p>
+
+                  <div className="mt-1.5 text-[9px] text-zinc-500">
+                    Sex, 15/05/2026 • Noite
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-blue-400/15 bg-blue-400/8 px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-white">Dr. Pedro</span>
+                    <span className="rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-0.5 text-[9px] text-blue-300">
+                      Oferta direcionada
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+                    Oferta enviada para Dra. Ana aguardando aceite.
+                  </p>
+
+                  <div className="mt-1.5 text-[9px] text-zinc-500">
+                    Sáb, 16/05/2026 • Tarde
+                  </div>
+                </div>
+
+                <div className="h-px bg-white/5" />
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                      Disponibilidades
+                    </p>
+
+                    <span className="rounded-full bg-white/5 px-2.5 py-1 text-[9px] font-black text-zinc-400">
+                      8
+                    </span>
+                  </div>
+
+                  <div className="mt-2 space-y-2">
+                    {[
+                      ["Dra. Camila", "17/05/2026", "Manhã", "text-emerald-300 bg-emerald-400/10"],
+                      ["Dr. Rafael", "18/05/2026", "Noite", "text-purple-300 bg-purple-400/10"],
+                    ].map(([name, date, period, chip]) => (
+                      <div
+                        key={name}
+                        className="rounded-2xl border border-white/5 bg-black/20 px-3 py-2.5 text-[10px]"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-white">{name}</span>
+                          <span className="text-[9px] text-zinc-500">
+                            14/05
+                          </span>
+                        </div>
+
+                        <div className="mt-1.5 text-zinc-400">
+                          Disp. para <strong className="text-zinc-300">{date}</strong>
+                        </div>
+
+                        <span className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[9px] ${chip}`}>
+                          {period}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[26px] border border-emerald-400/15 bg-emerald-400/8 p-4">
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+                Multihospital
               </p>
 
-              <div className="mt-4 flex gap-2">
-                <div className="rounded-xl bg-white/5 px-3 py-2 text-xs font-semibold text-white">
-                  Aprovar
+              <h3 className="mt-1 text-base font-black tracking-tight text-white">
+                Pendências em outros hospitais
+              </h3>
+
+              <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-400">
+                Trocas aceitas por outro médico aguardando confirmação.
+              </p>
+
+              <div className="mt-3 rounded-3xl border border-white/5 bg-black/20 px-3 py-2.5 text-[10px]">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-black text-white">Hospital Norte</p>
+                    <p className="mt-1 font-bold text-emerald-300">
+                      2 aguardando confirmação
+                    </p>
+                  </div>
+
+                  <span className="whitespace-nowrap rounded-2xl bg-white/5 px-3 py-1.5 text-[9px] font-black text-zinc-300">
+                    Abrir
+                  </span>
                 </div>
-                <div className="rounded-xl bg-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">
-                  Revisar
-                </div>
               </div>
             </div>
-          </div>
+          </section>
+        </div>
 
-          <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-[#4AE2B6]/10 p-3 text-[#4AE2B6]">
-                <Wallet size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">
-                  Fechamento financeiro
-                </p>
-                <p className="text-xs text-zinc-500">Prévia do mês atual</p>
-              </div>
-            </div>
+        <div className="mt-4 rounded-[24px] border border-white/5 bg-white/[0.03] px-4 py-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-[#4AE2B6]">
+                Visão demonstrativa
+              </p>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/5 bg-black/20 p-4">
-                <p className="text-xs text-zinc-500">Plantões lançados</p>
-                <p className="mt-2 text-2xl font-black text-white">148</p>
-              </div>
-              <div className="rounded-2xl border border-white/5 bg-black/20 p-4">
-                <p className="text-xs text-zinc-500">Chefias</p>
-                <p className="mt-2 text-2xl font-black text-white">18</p>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl bg-[#4AE2B6]/6 p-4">
-              <p className="text-xs text-zinc-500">Status</p>
-              <p className="mt-2 text-sm font-semibold text-white">
-                Dados organizados para conferência final
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                Mock inspirado no painel administrativo real do MedTurn.
               </p>
             </div>
-          </div>
 
-          <div className="rounded-[26px] border border-white/5 bg-white/[0.03] p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-sky-500/10 p-3 text-sky-400">
-                <BellRing size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">Notificações</p>
-                <p className="text-xs text-zinc-500">Últimas interações da equipe</p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {[
-                "Nova troca anunciada em Clínica Médica",
-                "Escala de sexta atualizada",
-                "2 médicos confirmaram disponibilidade",
-              ].map((item) => (
-                <div
+            <div className="flex flex-wrap gap-2">
+              {["Escala", "Trocas", "Conflitos", "Relatórios"].map((item) => (
+                <span
                   key={item}
-                  className="flex items-start gap-3 rounded-2xl bg-black/20 px-4 py-3"
+                  className="rounded-full bg-white/5 px-3 py-1 text-[9px] font-bold text-zinc-400"
                 >
-                  <span className="mt-1 h-2 w-2 rounded-full bg-[#4AE2B6]" />
-                  <p className="text-sm text-zinc-300">{item}</p>
-                </div>
+                  {item}
+                </span>
               ))}
             </div>
           </div>
@@ -420,23 +619,22 @@ function DashboardMock() {
     </div>
   );
 }
-
 export default function MedTurnVitrine() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Impede o scroll da página quando o menu mobile está aberto
   useEffect(() => {
-  document.body.style.overflow = isMenuOpen ? "hidden" : "unset";
+    document.body.style.overflow = isMenuOpen ? "hidden" : "unset";
 
-  return () => {
-    document.body.style.overflow = "unset";
-  };
-}, [isMenuOpen]);
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isMenuOpen]);
 
   const navLinks = [
     { href: "#problema", label: "O problema" },
     { href: "#solucao", label: "Solução" },
-    { href: "#como-funciona", label: "Como funciona" },
+    { href: "#operacao", label: "Operação" },
+    { href: "#ecossistema", label: "Ecossistema" },
     { href: "#implantacao", label: "Implantação" },
     { href: "#precos", label: "Planos" },
   ];
@@ -444,84 +642,86 @@ export default function MedTurnVitrine() {
   return (
     <div className="min-h-screen bg-[#071312] text-zinc-200 selection:bg-[#4AE2B6]/30 selection:text-white">
       <header
-  className={`fixed top-0 z-[100] w-full border-b border-white/5 transition-colors duration-300 ${
-    isMenuOpen
-      ? "bg-[#071312]"
-      : "bg-[#071312]/80 backdrop-blur-lg"
-  }`}
->
+        className={`fixed top-0 z-[100] w-full border-b border-white/5 transition-colors duration-300 ${
+          isMenuOpen ? "bg-[#071312]" : "bg-[#071312]/80 backdrop-blur-lg"
+        }`}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <Link href="/" className="text-xl font-black tracking-tighter text-white">
             MED<span className="text-[#4AE2B6]">TURN</span>
           </Link>
 
-          {/* Navegação Desktop */}
           <nav className="hidden gap-8 text-sm font-medium text-zinc-400 md:flex">
             {navLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="transition-colors hover:text-white">
+              <Link
+                key={link.href}
+                href={link.href}
+                className="transition-colors hover:text-white"
+              >
                 {link.label}
               </Link>
             ))}
           </nav>
 
           <div className="flex items-center gap-4">
-            <Link href="/login" className="hidden rounded-xl border border-white/10 bg-white/5 px-5 py-2 text-sm font-bold text-white transition-all hover:bg-white/10 md:block">
+            <Link
+              href="/login"
+              className="hidden rounded-xl border border-white/10 bg-white/5 px-5 py-2 text-sm font-bold text-white transition-all hover:bg-white/10 md:block"
+            >
               Entrar
             </Link>
 
-            {/* Botão Mobile Toggle */}
             <button
-  type="button"
-  aria-label={isMenuOpen ? "Fechar menu" : "Abrir menu"}
-  aria-expanded={isMenuOpen}
-  onClick={() => setIsMenuOpen(!isMenuOpen)}
-  className="relative z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10 md:hidden"
->
+              type="button"
+              aria-label={isMenuOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="relative z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition-colors hover:bg-white/10 md:hidden"
+            >
               {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
           </div>
         </div>
 
-        {/* Overlay do Menu Mobile */}
         <div
-  aria-hidden={!isMenuOpen}
-  className={`fixed left-0 right-0 top-[76px] bottom-0 z-40 isolate overflow-y-auto bg-[#071312] p-8 transition-[transform,opacity] duration-300 md:hidden ${
-  isMenuOpen
-    ? "translate-x-0 opacity-100 pointer-events-auto"
-    : "translate-x-full opacity-0 pointer-events-none"
-}`}
->
-  <div className="flex flex-col gap-8 pt-6 text-3xl font-black">
-    {navLinks.map((link) => (
-      <Link
-        key={link.href}
-        href={link.href}
-        onClick={() => setIsMenuOpen(false)}
-        className="text-zinc-500 transition-colors hover:text-[#4AE2B6]"
-      >
-        {link.label}
-      </Link>
-    ))}
-  </div>
+          aria-hidden={!isMenuOpen}
+          className={`fixed bottom-0 left-0 right-0 top-[76px] z-40 isolate overflow-y-auto bg-[#071312] p-8 transition-[transform,opacity] duration-300 md:hidden ${
+            isMenuOpen
+              ? "translate-x-0 opacity-100 pointer-events-auto"
+              : "translate-x-full opacity-0 pointer-events-none"
+          }`}
+        >
+          <div className="flex flex-col gap-8 pt-6 text-3xl font-black">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setIsMenuOpen(false)}
+                className="text-zinc-500 transition-colors hover:text-[#4AE2B6]"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
 
-  <div className="space-y-4 pt-10">
-    <Link
-      href="/login"
-      onClick={() => setIsMenuOpen(false)}
-      className="flex h-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-lg font-bold text-white"
-    >
-      Entrar no sistema
-    </Link>
+          <div className="space-y-4 pt-10">
+            <Link
+              href="/login"
+              onClick={() => setIsMenuOpen(false)}
+              className="flex h-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-lg font-bold text-white"
+            >
+              Entrar no sistema
+            </Link>
 
-    <Link
-      href="/solicitar-implantacao"
-      onClick={() => setIsMenuOpen(false)}
-      className="flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] text-lg font-bold text-[#071312]"
-    >
-      Solicitar proposta
-    </Link>
-  </div>
-</div>
+            <Link
+              href="/solicitar-implantacao"
+              onClick={() => setIsMenuOpen(false)}
+              className="flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] text-lg font-bold text-[#071312]"
+            >
+              Solicitar proposta
+            </Link>
+          </div>
+        </div>
       </header>
 
       <section className="relative overflow-hidden px-6 pb-20 pt-40 md:pb-28 md:pt-48">
@@ -533,79 +733,119 @@ export default function MedTurnVitrine() {
         </div>
 
         <div className="mx-auto max-w-7xl">
-          <div className="text-left">
-            <Pill>Para coordenadores de escala, gestores e diretores hospitalares</Pill>
+  <div className="max-w-4xl">
+    <Pill>Para coordenações médicas, hospitais e grupos de plantão</Pill>
 
-            <h1 className="mt-8 text-4xl font-black leading-[1.02] tracking-tight text-white sm:text-5xl md:text-7xl lg:leading-[1.02]">
-              Domínio total sobre a escala.
-              <br />
-              <span className="bg-gradient-to-r from-[#4AE2B6] to-[#219B82] bg-clip-text text-transparent">
-                Previsibilidade real para quem lidera a operação.
-              </span>
-            </h1>
+    <h1 className="mt-8 text-4xl font-black leading-[1.02] tracking-tight text-white sm:text-5xl md:text-7xl lg:leading-[1.02]">
+      A escala deixa de ser um problema diário.
+      <br />
+      <span className="bg-gradient-to-r from-[#4AE2B6] to-[#219B82] bg-clip-text text-transparent">
+        E vira uma operação controlada.
+      </span>
+    </h1>
 
-            <p className="mt-8 max-w-2xl text-base leading-7 text-zinc-400 md:text-xl md:leading-8">
-              O MedTurn centraliza a gestão de plantões, organiza trocas com
-              aprovação da coordenação e deixa o fechamento muito mais claro ao
-              longo do mês.
-            </p>
+    <p className="mt-8 max-w-2xl text-base leading-7 text-zinc-400 md:text-xl md:leading-8">
+      O MedTurn centraliza escala, trocas, disponibilidades, avisos,
+      conflitos, confirmação auxiliar de presença e relatórios de produção
+      em um fluxo único para coordenação e equipe médica.
+    </p>
 
-            <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
-              <Link
-                href="/solicitar-implantacao"
-                className="inline-flex h-16 items-center rounded-2xl bg-[#4AE2B6] px-8 text-base font-black text-[#071312] shadow-[0_0_50px_-10px_#4AE2B6] transition-all hover:scale-105 hover:bg-[#5cf2c5]"
-              >
-                Agendar demonstração
-                <ArrowRight className="ml-2" size={18} />
-              </Link>
+    <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+<Link
+  href="/solicitar-implantacao"
+  className="inline-flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] px-8 text-base font-black text-[#071312] shadow-[0_0_50px_-10px_#4AE2B6] transition-all hover:scale-105 hover:bg-[#5cf2c5]"
+>
+  Solicitar proposta para meu serviço
+  <ArrowRight className="ml-2" size={18} />
+</Link>
 
-              <Link
-  href="#implantacao"
+<Link
+  href="#precos"
   className="inline-flex h-16 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-8 text-base font-bold text-white backdrop-blur-md transition-all hover:bg-white/10"
 >
-  Conhecer a implantação <ArrowRight size={16} />
+  Ver planos institucionais <ArrowRight size={16} />
 </Link>
-            </div>
+    </div>
 
-            <div className="mt-10 grid gap-3 text-sm sm:grid-cols-3">
-              {[
-                "Trocas com aprovação da coordenação",
-                "Escala organizada em um só lugar",
-                "Fechamento mais leve no fim do mês",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 font-semibold text-zinc-300"
-                >
-                  <CheckCircle2 size={16} className="text-[#4AE2B6]" />
-                  {item}
-                </div>
-              ))}
-            </div>
+    <div className="mt-10 grid gap-3 text-sm sm:grid-cols-3">
+      {[
+        "Trocas com aprovação",
+        "Pendências por hospital",
+        "Fechamento mais organizado",
+      ].map((item) => (
+        <div
+          key={item}
+          className="flex items-center justify-center gap-2 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 font-semibold text-zinc-300"
+        >
+          <CheckCircle2 size={16} className="text-[#4AE2B6]" />
+          {item}
+        </div>
+      ))}
+    </div>
 
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-  <StatCard
-    value="Menos ruído"
-    label="na rotina da escala"
-    sub="Menos dependência de planilhas, PDFs soltos e mensagens espalhadas"
-  />
-  <StatCard
-    value="Mais segurança"
-    label="para aprovar trocas e decisões"
-    sub="A gestão enxerga melhor o que mudou, o que está pendente e o que já foi validado"
-  />
-  <StatCard
-    value="Mais clareza"
-    label="para fechar o mês"
-    sub="A operação fica mais organizada ao longo da rotina, sem deixar todo o peso para o fim"
-  />
+<div className="mt-6 grid gap-4 md:grid-cols-2">
+  <div className="rounded-[28px] border border-[#4AE2B6]/15 bg-[#4AE2B6]/5 p-5">
+    <p className="text-sm font-bold text-white">
+      Você não recebe só um sistema.
+    </p>
+
+    <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+      Recebe um fluxo implantado com acompanhamento, configuração conforme a
+      rotina do serviço e orientação inicial para coordenação e equipe médica.
+    </p>
+  </div>
+
+  <div className="rounded-[28px] border border-white/5 bg-white/[0.03] p-5">
+    <p className="text-sm font-bold text-white">
+      Criado a partir da rotina real de plantões médicos.
+    </p>
+
+    <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+      O MedTurn foi desenhado para resolver problemas práticos de escala:
+      trocas, disponibilidade, conflitos, avisos, pendências e fechamento mensal.
+    </p>
+  </div>
+</div>
+  </div>
+
+<div className="mt-16">
+  <div className="mb-8 max-w-3xl">
+    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#4AE2B6]">
+      Painel administrativo
+    </p>
+
+    <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-white md:text-5xl">
+      A coordenação enxerga a operação inteira em uma única tela.
+    </h2>
+
+    <p className="mt-4 text-base leading-7 text-zinc-400 md:text-lg">
+      Pendências, trocas aceitas, conflitos, avisos, disponibilidade médica,
+      relatórios e ações rápidas ficam organizados para tomada de decisão.
+    </p>
+  </div>
+
+  <div className="w-full">
+    <DashboardMock />
+  </div>
 </div>
 
-<div className="mt-14">
-  <DashboardMock />
-</div>
+  <div className="mt-12 grid gap-4 md:grid-cols-3">
+            <StatCard
+              value="Menos ruído"
+              label="na rotina da coordenação"
+              sub="Trocas, avisos, disponibilidade e pendências deixam de ficar espalhados."
+            />
+            <StatCard
+              value="Mais controle"
+              label="sobre decisões operacionais"
+              sub="A coordenação enxerga o que está pendente, aceito, aprovado ou em conflito."
+            />
+            <StatCard
+              value="Mais clareza"
+              label="para fechar o mês"
+              sub="A produção e os plantões chegam mais organizados para conferência final."
+            />
           </div>
-
         </div>
       </section>
 
@@ -618,8 +858,8 @@ export default function MedTurnVitrine() {
             <div>
               <SectionHeading
                 eyebrow="O problema"
-                title="Quem coordena escala sabe: o problema não é só montar a grade. É sustentar o mês inteiro."
-                desc="Troca para aprovar, médico para responder, escala para atualizar, fechamento para conferir. Quando tudo isso depende de planilha, PDF e grupo de WhatsApp, a operação começa a cobrar caro da coordenação."
+                title="A escala não quebra só quando falta médico. Ela quebra quando a informação se espalha."
+                desc="Pedido de troca no WhatsApp, disponibilidade perdida em mensagem, PDF desatualizado, médico em dois lugares, produção sendo conferida no fim do mês. O peso cai na coordenação."
               />
             </div>
 
@@ -628,8 +868,8 @@ export default function MedTurnVitrine() {
                 <AlertCircle className="shrink-0 text-red-400" />
                 <p className="text-sm leading-relaxed text-zinc-400">
                   <strong className="text-white">Informação espalhada:</strong>{" "}
-                  alterações importantes ficam divididas entre mensagens,
-                  arquivos e versões diferentes da escala.
+                  alterações importantes ficam entre planilhas, mensagens, PDFs e
+                  conversas paralelas.
                 </p>
               </div>
 
@@ -637,8 +877,8 @@ export default function MedTurnVitrine() {
                 <Clock3 className="shrink-0 text-orange-400" />
                 <p className="text-sm leading-relaxed text-zinc-400">
                   <strong className="text-white">Desgaste diário:</strong>{" "}
-                  a coordenação gasta tempo demais revisando detalhe operacional
-                  que poderia estar muito mais organizado.
+                  a coordenação precisa reconferir nomes, datas, turnos, aceitações e
+                  pendências manualmente.
                 </p>
               </div>
 
@@ -646,8 +886,8 @@ export default function MedTurnVitrine() {
                 <TrendingUp className="shrink-0 text-[#4AE2B6]" />
                 <p className="text-sm leading-relaxed text-zinc-400">
                   <strong className="text-white">Falta de previsibilidade:</strong>{" "}
-                  o mês vai ficando mais pesado quando não existe um sistema que
-                  conecte rotina, trocas e fechamento.
+                  o fechamento fica pesado porque a operação não foi organizada ao
+                  longo do mês.
                 </p>
               </div>
             </div>
@@ -659,195 +899,303 @@ export default function MedTurnVitrine() {
         <div className="mx-auto max-w-6xl">
           <SectionHeading
             eyebrow="A solução"
-            title="Um sistema para tirar a escala do improviso e colocar a operação no lugar."
-            desc="O MedTurn ajuda a gestão a trabalhar com mais clareza, mais rastreabilidade e menos desgaste no dia a dia."
+            title="Um sistema para conectar escala, equipe médica e coordenação."
+            desc="O MedTurn transforma a escala em uma operação acompanhável: com fluxo de aprovação, central de pendências, avisos oficiais, multihospital, conflitos e relatórios de apoio."
           />
 
           <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             <FeatureCard
-              icon={Layers3}
-              title="Escala centralizada por unidade operacional"
-              desc="UTI, pronto atendimento, centro cirúrgico e outras frentes podem ser acompanhadas com mais clareza dentro do mesmo sistema."
+              icon={CalendarDays}
+              title="Escala mensal centralizada"
+              desc="A coordenação visualiza, organiza e edita plantões por hospital ou unidade, com uma referência única para a equipe."
             />
             <FeatureCard
-              icon={ShieldCheck}
+              icon={Repeat}
               title="Trocas com fluxo validado"
-              desc="Solicitações e movimentações acontecem com participação da coordenação, e não no improviso do grupo."
+              desc="Solicitações, ofertas direcionadas e aceitações passam pelo fluxo correto, com confirmação da coordenação."
             />
             <FeatureCard
               icon={BellRing}
-              title="Atualizações mais rápidas para a equipe"
-              desc="Os médicos acompanham mudanças, oportunidades e publicações com muito mais agilidade e menos ruído."
+              title="Avisos e notificações"
+              desc="A coordenação pode enviar comunicados para um médico específico ou para todos os usuários do hospital."
             />
             <FeatureCard
               icon={Calculator}
-              title="Base organizada para o fechamento"
-              desc="Ao longo do mês, a operação fica mais limpa para facilitar conferência, produção e fechamento."
+              title="Relatório de produção"
+              desc="Plantões, turnos, chefias e regras de produção ficam organizados para apoiar a conferência financeira."
+            />
+          </div>
+
+          <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+            <FeatureCard
+              icon={ClipboardList}
+              title="Histórico de trocas"
+              desc="Consulta de trocas realizadas, pendentes e não realizadas por mês para melhorar rastreabilidade operacional."
+            />
+            <FeatureCard
+              icon={ShieldCheck}
+              title="Verificador de conflitos"
+              desc="A plataforma aponta possíveis sobreposições de médicos no mesmo período entre hospitais ou unidades."
+            />
+            <FeatureCard
+              icon={MessageSquareText}
+              title="Mensagem do plantão"
+              desc="Geração automática do texto diário com plantonistas separados por turno, pronto para copiar e revisar."
+            />
+            <FeatureCard
+              icon={MapPin}
+              title="Confirmação auxiliar"
+              desc="Quando disponível, permite registro declaratório de chegada ou assunção de plantão como apoio operacional."
             />
           </div>
         </div>
       </section>
 
-      <section id="como-funciona" className="px-6 py-20">
+      <section id="operacao" className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            eyebrow="Como funciona"
-            title="Uma rotina mais leve para quem lidera a escala e mais clara para toda a equipe"
-            desc="O MedTurn foi pensado para acompanhar a prática real do hospital, sem complicar ainda mais a operação."
+            eyebrow="Operação real"
+            title="O MedTurn foi desenhado para o fluxo que a coordenação vive todos os dias."
+            desc="Não é só uma tela de escala. É uma camada operacional para acompanhar pendências, agir rápido e reduzir falhas de comunicação."
             center
           />
 
           <div className="mt-14 grid gap-6 md:grid-cols-3">
             <StepCard
               number="1"
-              title="A coordenação publica e acompanha a escala"
-              desc="A operação passa a ter uma referência central, mais fácil de manter atualizada e mais clara para a equipe."
+              title="A escala vira a fonte principal"
+              desc="A coordenação mantém o mês organizado em um só lugar, por hospital, unidade, data e turno."
             />
             <StepCard
               number="2"
-              title="O médico interage dentro do próprio fluxo"
-              desc="Trocas, respostas e movimentações acontecem com mais contexto e menos dependência de mensagens soltas."
+              title="O médico interage pelo app ou web"
+              desc="O plantonista consulta a agenda, informa disponibilidade, responde ofertas e acompanha movimentações."
             />
             <StepCard
               number="3"
-              title="O fechamento chega muito mais organizado"
-              desc="Com o mês melhor estruturado desde o começo, a conferência final deixa de concentrar tanto desgaste."
+              title="A coordenação valida e acompanha"
+              desc="Trocas aceitas, conflitos, avisos e relatórios aparecem em painéis de apoio à decisão."
+            />
+          </div>
+
+          <div className="mt-14 grid gap-5 lg:grid-cols-2">
+            <ResultItem
+              title="Central de pendências"
+              desc="Trocas pendentes, ofertas direcionadas, aceite por outro médico e disponibilidades recentes aparecem em um só painel."
+            />
+            <ResultItem
+              title="Prioridade agora"
+              desc="O dashboard destaca o que exige ação: conflito detectado, troca aguardando confirmação ou operação sem pendências críticas."
+            />
+            <ResultItem
+              title="Multihospital"
+              desc="Coordenadores com acesso a mais de um hospital visualizam pendências relevantes de outras unidades."
+            />
+            <ResultItem
+              title="Comunicação mais segura"
+              desc="A mensagem diária e os avisos reduzem risco de nomes digitados errados e comunicações desencontradas."
             />
           </div>
         </div>
       </section>
 
-      <section className="bg-[#0A1A18] px-6 py-24 border-y border-white/5">
-  <div className="mx-auto max-w-6xl">
-    <div className="grid gap-16 lg:grid-cols-[1fr_2fr] lg:items-start">
-      
-      {/* Coluna da Esquerda: Heading fixo/destaque */}
-      <div className="lg:sticky lg:top-28 self-start">
-        <Pill>Impacto Operacional</Pill>
-        <h2 className="mt-6 text-4xl font-black leading-tight text-white md:text-5xl">
-          A saúde da sua operação em um novo patamar.
-        </h2>
-        <p className="mt-6 text-lg leading-relaxed text-zinc-400">
-          Mais do que organizar turnos, o MedTurn remove os gargalos que fazem a coordenação perder tempo e a equipe perder a confiança na escala.
-        </p>
-        
-        <div className="mt-10 rounded-3xl border border-[#4AE2B6]/20 bg-[#4AE2B6]/5 p-6">
-          <p className="text-sm font-bold text-[#4AE2B6]">Impacto percebido na rotina:</p>
-<p className="mt-2 text-white font-medium">
-  Quando a escala deixa de depender de reconferência manual, a gestão ganha tempo, clareza e previsibilidade ao longo do mês.
-</p>
-        </div>
-      </div>
+      <section className="border-y border-white/5 bg-[#0A1A18] px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid gap-16 lg:grid-cols-[1fr_2fr] lg:items-start">
+            <div className="self-start lg:sticky lg:top-28">
+              <Pill>Impacto operacional</Pill>
+              <h2 className="mt-6 text-4xl font-black leading-tight text-white md:text-5xl">
+                O ganho não é só digitalizar. É tirar peso da coordenação.
+              </h2>
+              <p className="mt-6 text-lg leading-relaxed text-zinc-400">
+                Quando o fluxo passa a ter dono, tela, status e histórico, a
+                escala deixa de depender de memória, print e reconferência manual.
+              </p>
 
-      {/* Coluna da Direita: Lista limpa de benefícios */}
-      <div className="grid gap-x-12 gap-y-10 sm:grid-cols-2">
-        {[
-          {
-            t: "Fim da dependência de PDFs",
-            d: "A escala deixa de ser um arquivo estático e vira uma central viva. Todos consultam a mesma versão, em tempo real.",
-            icon: Layers3
-          },
-          {
-            t: "Aprovação em um clique",
-            d: "Trocas e coberturas pendentes aparecem organizadas para a gestão validar, com histórico completo de quem solicitou.",
-            icon: UserCheck
-          },
-          {
-            t: "Fechamento antecipado",
-            d: "Como os dados são validados durante o mês, a conferência financeira vira apenas uma formalidade rápida no fim do mês.",
-            icon: Calculator
-          },
-          {
-            t: "Comunicação sem ruído",
-            d: "Avisos críticos e oportunidades chegam via notificação oficial, saindo de vez do caos dos grupos de WhatsApp.",
-            icon: BellRing
-          },
-          {
-            t: "Rastreabilidade Total",
-            d: "Saiba exatamente quem aprovou cada troca e quando a escala foi alterada. Segurança jurídica e administrativa.",
-            icon: ShieldCheck
-          },
-          {
-            t: "Adoção mais fácil pela equipe",
-            d: "Médicos preferem sistemas claros. A facilidade do app garante que a equipe mantenha a escala sempre em dia.",
-            icon: Smartphone
-          }
-        ].map((item, i) => (
-          <div key={i} className="group">
-            <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-[#4AE2B6] transition-colors group-hover:bg-[#4AE2B6] group-hover:text-[#0C1E1C]">
-              <item.icon size={24} />
+              <div className="mt-10 rounded-3xl border border-[#4AE2B6]/20 bg-[#4AE2B6]/5 p-6">
+                <p className="text-sm font-bold text-[#4AE2B6]">
+                  Resultado esperado na rotina:
+                </p>
+                <p className="mt-2 font-medium text-white">
+                  Mais clareza para coordenar, mais previsibilidade para fechar e
+                  menos ruído para a equipe médica.
+                </p>
+              </div>
             </div>
-            <h4 className="text-xl font-bold text-white">{item.t}</h4>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              {item.d}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-</section>
 
-{/* SEÇÃO UNIFICADA: ECOSSISTEMA MEDTURN */}
-      <section id="ecossistema" className="px-6 py-24 md:py-32 border-t border-white/5">
+            <div className="grid gap-x-12 gap-y-10 sm:grid-cols-2">
+              {[
+                {
+                  t: "Menos dependência de WhatsApp",
+                  d: "Trocas, avisos e disponibilidades ganham fluxo próprio, reduzindo perda de informação.",
+                  icon: MessageSquareText,
+                },
+                {
+                  t: "Aprovação com contexto",
+                  d: "A coordenação vê quem pediu, quem aceitou, qual plantão está envolvido e o que precisa decidir.",
+                  icon: UserCheck,
+                },
+                {
+                  t: "Fechamento mais leve",
+                  d: "Os dados de plantões e produção ficam mais organizados ao longo do mês.",
+                  icon: Calculator,
+                },
+                {
+                  t: "Equipe mais informada",
+                  d: "Médicos consultam a própria rotina e recebem notificações sobre mudanças e oportunidades.",
+                  icon: Smartphone,
+                },
+                {
+                  t: "Rastreabilidade operacional",
+                  d: "Históricos, logs e status ajudam a entender o que aconteceu sem depender de versões soltas.",
+                  icon: Activity,
+                },
+                {
+                  t: "Mais segurança na escala",
+                  d: "O verificador de conflitos ajuda a apontar possíveis sobreposições antes que virem problema.",
+                  icon: ShieldCheck,
+                },
+              ].map((item, index) => (
+                <div key={index} className="group">
+                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-[#4AE2B6] transition-colors group-hover:bg-[#4AE2B6] group-hover:text-[#0C1E1C]">
+                    <item.icon size={24} />
+                  </div>
+                  <h4 className="text-xl font-bold text-white">{item.t}</h4>
+                  <p className="mt-3 text-sm leading-6 text-zinc-400">
+                    {item.d}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="ecossistema"
+        className="border-t border-white/5 px-6 py-24 md:py-32"
+      >
         <div className="mx-auto max-w-6xl">
           <SectionHeading
-            eyebrow="Ecossistema Completo"
-            title="Uma plataforma, duas experiências focadas em eficiência."
-            desc="Interfaces específicas para quem decide e para quem executa, garantindo que a informação certa chegue no momento certo."
+            eyebrow="Ecossistema completo"
+            title="Duas experiências conectadas: coordenação e plantonista."
+            desc="A gestão trabalha no painel web. O médico acompanha a rotina pelo app iOS ou pelo acesso web responsivo. Cada um vê o que precisa ver."
             center
           />
 
           <div className="mt-16 grid gap-8 lg:grid-cols-2">
-            {/* LADO GESTOR - WEB */}
-            <div className="group relative overflow-hidden rounded-[40px] border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent p-8 md:p-12 transition-all hover:border-[#4AE2B6]/30">
-              <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-[#4AE2B6]/5 blur-3xl group-hover:bg-[#4AE2B6]/10 transition-all" />
+            <div className="group relative overflow-hidden rounded-[40px] border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent p-8 transition-all hover:border-[#4AE2B6]/30 md:p-12">
+              <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-[#4AE2B6]/5 blur-3xl transition-all group-hover:bg-[#4AE2B6]/10" />
+
               <Pill>Gestão & Coordenação</Pill>
-              <h3 className="mt-6 text-3xl font-black text-white">Domínio estratégico via Web.</h3>
-              <p className="mt-4 text-zinc-400">Ambiente administrativo construído para coordenadores que precisam de autoridade e dados para sustentar a escala sem carregar a operação nas costas.</p>
+
+              <h3 className="mt-6 text-3xl font-black text-white">
+                Painel administrativo para decidir rápido.
+              </h3>
+
+              <p className="mt-4 text-zinc-400">
+                Ambiente web para coordenadores acompanharem escala, pendências,
+                trocas, conflitos, avisos, equipe médica e relatórios.
+              </p>
+
               <ul className="mt-8 space-y-4">
                 {[
-                  { t: "Validação Ativa", d: "Palavra final em todas as trocas com um fluxo 100% rastreável." },
-                  { t: "Inteligência de Faturamento", d: "Relatórios de produção gerados em segundos, eliminando erros manuais." },
-                  { t: "Gestão Multiunidade", d: "Controle UTI, PA e Centros Cirúrgicos em uma única tela centralizada." }
-                ].map((item, i) => (
-                  <li key={i} className="flex gap-4">
+                  {
+                    t: "Ações rápidas",
+                    d: "Escala mensal, mensagem do plantão, relatório, histórico, médicos e conflitos.",
+                  },
+                  {
+                    t: "Central de pendências",
+                    d: "Trocas e disponibilidades recentes organizadas por prioridade.",
+                  },
+                  {
+                    t: "Gestão multi-hospital",
+                    d: "Pendências de outros hospitais visíveis para quem coordena múltiplas unidades.",
+                  },
+                  {
+                    t: "Avisos administrativos",
+                    d: "Envio para todos do hospital ou para um médico específico.",
+                  },
+                ].map((item, index) => (
+                  <li key={index} className="flex gap-4">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4AE2B6]/10 text-[#4AE2B6]">
                       <CheckCircle2 size={14} strokeWidth={3} />
                     </div>
                     <div>
                       <p className="text-sm font-bold text-white">{item.t}</p>
-                      <p className="text-xs text-zinc-500">{item.d}</p>
+                      <p className="text-xs leading-relaxed text-zinc-500">
+                        {item.d}
+                      </p>
                     </div>
                   </li>
                 ))}
               </ul>
             </div>
 
-            {/* LADO MÉDICO - APP */}
-            <div className="group relative overflow-hidden rounded-[40px] border border-white/10 bg-gradient-to-b from-[#4AE2B6]/5 to-transparent p-8 md:p-12 transition-all hover:border-[#4AE2B6]/30">
-              <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-[#4AE2B6]/10 blur-3xl group-hover:bg-[#4AE2B6]/20 transition-all" />
+            <div className="group relative overflow-hidden rounded-[40px] border border-white/10 bg-gradient-to-b from-[#4AE2B6]/5 to-transparent p-8 transition-all hover:border-[#4AE2B6]/30 md:p-12">
+              <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-[#4AE2B6]/10 blur-3xl transition-all group-hover:bg-[#4AE2B6]/20" />
+
               <Pill>Plantonistas & Médicos</Pill>
-              <h3 className="mt-6 text-3xl font-black text-white">Sua agenda na palma da mão.</h3>
-              <p className="mt-4 text-zinc-400">O médico acompanha a própria rotina com agilidade, recebe notificações em tempo real e visualiza oportunidades de cobertura instantaneamente.</p>
+
+              <h3 className="mt-6 text-3xl font-black text-white">
+                Agenda e interações na palma da mão.
+              </h3>
+
+              <p className="mt-4 text-zinc-400">
+                O médico acompanha a própria escala, informa disponibilidade,
+                participa de trocas, recebe avisos e consulta oportunidades.
+              </p>
+
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors group-hover:bg-white/[0.08]">
-                  <Smartphone className="text-[#4AE2B6] mb-2" size={20} />
-                  <p className="text-xs font-bold text-white leading-tight">App iOS e acesso móvel no Android</p>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors group-hover:bg-white/[0.08]">
-                  <BellRing className="text-[#4AE2B6] mb-2" size={20} />
-                  <p className="text-xs font-bold text-white leading-tight">Alertas de Trocas</p>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors group-hover:bg-white/[0.08]">
-                  <CalendarDays className="text-[#4AE2B6] mb-2" size={20} />
-                  <p className="text-xs font-bold text-white leading-tight">Agenda Pessoal</p>
-                </div>
-                <div className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors group-hover:bg-white/[0.08]">
-                  <ShieldCheck className="text-[#4AE2B6] mb-2" size={20} />
-                  <p className="text-xs font-bold text-white leading-tight">Mais segurança na rotina</p>
-                </div>
+                {[
+                  {
+                    title: "App iOS",
+                    icon: Smartphone,
+                  },
+                  {
+                    title: "Web responsiva",
+                    icon: MonitorSmartphone,
+                  },
+                  {
+                    title: "Notificações",
+                    icon: BellRing,
+                  },
+                  {
+                    title: "Disponibilidade",
+                    icon: CalendarDays,
+                  },
+                  {
+                    title: "Trocas de plantão",
+                    icon: Repeat,
+                  },
+                  {
+                    title: "Confirmação auxiliar",
+                    icon: MapPin,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-2xl border border-white/5 bg-white/5 p-4 transition-colors group-hover:bg-white/[0.08]"
+                  >
+                    <item.icon className="mb-2 text-[#4AE2B6]" size={20} />
+                    <p className="text-xs font-bold leading-tight text-white">
+                      {item.title}
+                    </p>
+                  </div>
+                ))}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-[32px] border border-amber-400/10 bg-amber-400/5 p-6">
+            <div className="flex gap-4">
+              <AlertCircle className="mt-1 shrink-0 text-amber-300" />
+              <p className="text-sm leading-relaxed text-zinc-400">
+                A confirmação auxiliar de presença, quando disponível, é um recurso
+                operacional e declaratório para apoio da gestão. Não substitui controle
+                oficial de ponto, jornada, frequência, validação administrativa ou decisão
+                da contratante.
+              </p>
             </div>
           </div>
         </div>
@@ -857,8 +1205,8 @@ export default function MedTurnVitrine() {
         <div className="mx-auto max-w-6xl">
           <SectionHeading
             eyebrow="Implantação"
-            title="Uma implementação segura, para operações que não podem perder ritmo."
-            desc="O MedTurn foi pensado para entrar na rotina com segurança. A implantação é conduzida para que o sistema se adapte ao funcionamento do serviço, com mais clareza, menos desgaste e uma transição muito mais organizada."
+            title="Uma implementação segura para operações que não podem perder ritmo."
+            desc="O MedTurn entra na rotina com mapeamento, configuração e acompanhamento, respeitando a forma como cada serviço organiza suas escalas."
             center
           />
 
@@ -866,17 +1214,17 @@ export default function MedTurnVitrine() {
             <StepCard
               number="1"
               title="Mapeamento da rotina atual"
-              desc="A implantação começa entendendo como o serviço funciona hoje: publicação da escala, trocas, comunicação com plantonistas e fechamento do mês."
+              desc="Entendimento do fluxo de escala, trocas, unidades, comunicação, produção e papel da coordenação."
             />
             <StepCard
               number="2"
-              title="Estruturação do fluxo no MedTurn"
-              desc="O sistema é organizado de acordo com a dinâmica do serviço, para a coordenação ganhar controle sem precisar quebrar a rotina para começar a usar."
+              title="Configuração do ambiente"
+              desc="Hospitais, usuários, perfis, unidades operacionais e fluxos são estruturados para a realidade do serviço."
             />
             <StepCard
               number="3"
-              title="Implantação acompanhada pela equipe"
-              desc="A implantação acontece com apoio, reduzindo ruído na adoção e ajudando coordenação e plantonistas a enxergarem o novo fluxo com mais clareza."
+              title="Adoção acompanhada"
+              desc="Coordenação e equipe médica recebem orientação para reduzir ruído e acelerar o uso prático."
             />
           </div>
 
@@ -890,21 +1238,20 @@ export default function MedTurnVitrine() {
                   Menos resistência da equipe. Mais organização para a operação andar.
                 </h3>
                 <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-                  Quando a implantação respeita a realidade do serviço, a
-                  coordenação sente menos peso na mudança, os plantonistas
-                  entendem melhor o fluxo e a adoção do sistema acontece com
-                  muito mais consistência.
+                  Quando a implantação respeita a realidade do serviço, a coordenação
+                  sente menos peso na mudança, os plantonistas entendem melhor o fluxo
+                  e a adoção acontece com mais consistência.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="rounded-2xl border border-white/5 bg-black/20 p-5">
                   <p className="text-sm font-bold text-white">
-                    Apoio real na implantação 
+                    Apoio real na implantação
                   </p>
                   <p className="mt-2 text-sm text-zinc-400">
-                    O processo não fica solto. O início é conduzido para
-                    reduzir dúvidas de uso e dar mais segurança à gestão e à equipe médica.
+                    O início é conduzido para reduzir dúvidas de uso e dar mais
+                    segurança à gestão e à equipe médica.
                   </p>
                 </div>
 
@@ -913,8 +1260,8 @@ export default function MedTurnVitrine() {
                     Configuração compatível com a operação
                   </p>
                   <p className="mt-2 text-sm text-zinc-400">
-                    O MedTurn se adapta à lógica do serviço para que a mudança
-                    entre na rotina com mais consistência.
+                    O MedTurn se adapta à lógica do serviço sem exigir que a
+                    coordenação quebre toda a rotina para começar.
                   </p>
                 </div>
               </div>
@@ -923,12 +1270,80 @@ export default function MedTurnVitrine() {
         </div>
       </section>
 
-      <section id="precos" className="bg-[#0A1A18] px-6 pt-16 pb-20">
+<section className="border-y border-white/5 bg-[#071312] px-6 py-24">
+  <div className="mx-auto max-w-6xl">
+    <SectionHeading
+      eyebrow="Custo invisível"
+      title="A escala manual custa mais do que parece."
+      desc="Antes de aparecer no financeiro, o custo da escala desorganizada aparece em desgaste operacional, mensagens perdidas, decisões sem rastreio e fechamento refeito manualmente."
+      center
+    />
+
+    <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      {[
+{
+  title: "Tempo da coordenação consumido",
+  desc: "Horas gastas conferindo planilhas, prints, mensagens e versões diferentes da escala.",
+  icon: Clock3,
+},
+        {
+          title: "Erros de comunicação",
+          desc: "Trocas, avisos e disponibilidades podem se perder quando tudo depende de conversas espalhadas.",
+          icon: MessageSquareText,
+        },
+        {
+          title: "Trocas fora do fluxo",
+          desc: "Pedidos e aceitações sem centralização aumentam o risco de decisão sem contexto completo.",
+          icon: Repeat,
+        },
+        {
+          title: "Conflitos de escala",
+          desc: "Médicos podem acabar escalados em mais de um local ou turno sem que a coordenação perceba a tempo.",
+          icon: AlertCircle,
+        },
+        {
+          title: "Fechamento refeito manualmente",
+          desc: "Quando o mês não é organizado durante a rotina, a conferência final fica mais lenta e sujeita a erro.",
+          icon: Calculator,
+        },
+        {
+          title: "Desgaste da equipe",
+          desc: "Quanto mais ruído na escala, maior o desgaste entre coordenação, plantonistas e gestão.",
+          icon: Users,
+        },
+      ].map((item) => (
+        <div
+          key={item.title}
+          className="rounded-[30px] border border-white/5 bg-white/[0.03] p-6 transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.05]"
+        >
+          <div className="mb-5 inline-flex rounded-2xl bg-[#4AE2B6]/10 p-3 text-[#4AE2B6]">
+            <item.icon size={22} />
+          </div>
+
+          <h3 className="text-lg font-bold text-white">{item.title}</h3>
+
+          <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+            {item.desc}
+          </p>
+        </div>
+      ))}
+    </div>
+
+    <div className="mt-10 rounded-[32px] border border-[#4AE2B6]/15 bg-[#4AE2B6]/5 p-8 text-center">
+      <p className="mx-auto max-w-3xl text-lg font-semibold leading-8 text-white">
+        O MedTurn ajuda a transformar esse custo invisível em uma operação
+        acompanhável, com mais clareza para decidir, aprovar, comunicar e fechar o mês.
+      </p>
+    </div>
+  </div>
+</section>
+
+      <section id="precos" className="bg-[#0A1A18] px-6 pb-20 pt-16">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
             eyebrow="Estrutura comercial"
-            title="Uma proposta compatível com o tamanho do seu serviço"
-            desc="O MedTurn foi pensado para hospitais e grupos que querem reduzir ruído na escala, aliviar a rotina da coordenação e ganhar mais previsibilidade sem depender de improviso."
+            title="Uma proposta compatível com o tamanho do seu serviço."
+            desc="O MedTurn foi pensado para hospitais e grupos que querem reduzir ruído na escala, aliviar a rotina da coordenação e ganhar previsibilidade operacional."
             center
           />
 
@@ -936,8 +1351,11 @@ export default function MedTurnVitrine() {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#4AE2B6]">
               Como o MedTurn se adapta à sua operação
             </p>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-zinc-400">
-  Cada unidade operacional representa uma frente de escala acompanhada separadamente dentro da operação, como UTI, pronto atendimento, centro cirúrgico ou outro núcleo com rotina própria. Assim, a proposta acompanha o tamanho real do serviço.
+<p className="mx-auto mt-3 max-w-3xl text-sm leading-7 text-zinc-400">
+  O valor do MedTurn acompanha o tamanho da operação. Para serviços menores,
+  uma unidade operacional pode ser suficiente. Para grupos com múltiplas
+  frentes, o plano multiunidade reduz o custo proporcional e entrega mais
+  controle para a coordenação.
 </p>
           </div>
 
@@ -951,8 +1369,9 @@ export default function MedTurnVitrine() {
                 "1 unidade operacional",
                 "Escala digital centralizada",
                 "Trocas com aprovação",
+                "Disponibilidade médica",
                 "Notificações para médicos",
-                "Fechamento financeiro organizado",
+                "Relatório de produção",
                 "Suporte comercial padrão",
               ]}
             />
@@ -962,13 +1381,14 @@ export default function MedTurnVitrine() {
               price="6.999,00"
               subtitle="Para até 3 unidades operacionais"
               valueLine="Para grupos que precisam dar padrão à operação, reduzir ruído entre unidades e aliviar a coordenação no dia a dia."
-              highlight={true}
+              highlight
               features={[
                 "Até 3 unidades operacionais",
                 "Tudo do plano Essencial",
                 "Controle centralizado por unidade operacional",
-                "Maior controle da operação",
-                "Fluxo mais robusto para coordenação",
+                "Pendências multi-hospital",
+                "Verificador de conflitos",
+                "Histórico de trocas",
                 "Condição comercial mais estratégica",
               ]}
             />
@@ -990,8 +1410,9 @@ export default function MedTurnVitrine() {
           </div>
 
           <p className="mt-8 text-center text-sm text-zinc-500">
-  Estrutura comercial a partir de R$ 2.999 por unidade operacional, com condições mais eficientes para operações multiunidade.
-</p>
+            Estrutura comercial a partir de R$ 2.999 por unidade operacional, com
+            condições mais eficientes para operações multiunidade.
+          </p>
         </div>
       </section>
 
@@ -1007,61 +1428,62 @@ export default function MedTurnVitrine() {
             </h2>
 
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-zinc-400">
-  O MedTurn ajuda hospitais e coordenações a organizar a escala, validar trocas com mais segurança e conduzir o mês com muito mais clareza.
-</p>
+              O MedTurn ajuda hospitais e coordenações a organizar a escala, validar
+              trocas, acompanhar pendências e conduzir o mês com muito menos ruído.
+            </p>
 
             <div className="mt-10 flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
-              <Link
-                href="/solicitar-implantacao"
-                className="inline-flex h-14 items-center justify-center rounded-2xl bg-[#4AE2B6] px-10 text-base font-bold text-[#071312] shadow-[0_0_40px_-10px_#4AE2B6] transition-all duration-300 hover:scale-105 hover:bg-[#5cf2c5]"
-              >
-                Agendar demonstração
-              </Link>
+<Link
+  href="/solicitar-implantacao"
+  className="inline-flex h-14 items-center justify-center rounded-2xl bg-[#4AE2B6] px-10 text-base font-bold text-[#071312] shadow-[0_0_40px_-10px_#4AE2B6] transition-all duration-300 hover:scale-105 hover:bg-[#5cf2c5]"
+>
+  Solicitar proposta para meu serviço
+</Link>
 
-              <Link
+<Link
   href="#precos"
   className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-10 text-base font-bold text-white backdrop-blur-md transition-all duration-300 hover:bg-white/10"
 >
-  Conhecer planos <ArrowRight size={16} />
+  Ver planos institucionais <ArrowRight size={16} />
 </Link>
             </div>
 
             <p className="mt-8 text-sm text-zinc-500">
-  Implantação assistida · Estrutura comercial institucional
-</p>
+              Implantação assistida · App iOS · Web responsiva · Painel administrativo
+            </p>
           </div>
         </div>
       </section>
 
       <footer className="border-t border-white/5 px-6 py-12">
-  <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
-    <div className="font-black tracking-tighter text-white">
-      MED<span className="text-[#4AE2B6]">TURN</span>
-    </div>
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
+          <div className="font-black tracking-tighter text-white">
+            MED<span className="text-[#4AE2B6]">TURN</span>
+          </div>
 
-    <div className="flex flex-col items-center gap-3 text-center md:items-end">
-      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-zinc-500">
-        <Link
-          href="/terms"
-          className="transition-colors hover:text-[#4AE2B6]"
-        >
-          Termos de Uso
-        </Link>
+          <div className="flex flex-col items-center gap-3 text-center md:items-end">
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-zinc-500">
+              <Link
+                href="/terms"
+                className="transition-colors hover:text-[#4AE2B6]"
+              >
+                Termos de Uso
+              </Link>
 
-        <Link
-          href="/privacy"
-          className="transition-colors hover:text-[#4AE2B6]"
-        >
-          Política de Privacidade
-        </Link>
-      </div>
+              <Link
+                href="/privacy"
+                className="transition-colors hover:text-[#4AE2B6]"
+              >
+                Política de Privacidade
+              </Link>
+            </div>
 
-      <p className="text-xs text-zinc-600">
-        © 2026 MedTurn Tecnologia Ltda. Todos os direitos reservados.
-      </p>
-    </div>
-  </div>
-</footer>
+            <p className="text-xs text-zinc-600">
+              © 2026 MedTurn Tecnologia Ltda. Todos os direitos reservados.
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
