@@ -1034,16 +1034,34 @@ export default function MedTurnVitrine() {
       </section>
 
       <footer className="border-t border-white/5 px-6 py-12">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
-          <div className="font-black tracking-tighter text-white">
-            MED<span className="text-[#4AE2B6]">TURN</span>
-          </div>
+  <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
+    <div className="font-black tracking-tighter text-white">
+      MED<span className="text-[#4AE2B6]">TURN</span>
+    </div>
 
-          <p className="text-xs text-zinc-600">
-            © 2026 MedTurn Tecnologia Ltda. Todos os direitos reservados.
-          </p>
-        </div>
-      </footer>
+    <div className="flex flex-col items-center gap-3 text-center md:items-end">
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-medium text-zinc-500">
+        <Link
+          href="/terms"
+          className="transition-colors hover:text-[#4AE2B6]"
+        >
+          Termos de Uso
+        </Link>
+
+        <Link
+          href="/privacy"
+          className="transition-colors hover:text-[#4AE2B6]"
+        >
+          Política de Privacidade
+        </Link>
+      </div>
+
+      <p className="text-xs text-zinc-600">
+        © 2026 MedTurn Tecnologia Ltda. Todos os direitos reservados.
+      </p>
+    </div>
+  </div>
+</footer>
     </div>
   );
 }
