@@ -733,24 +733,24 @@ export default function MedTurnVitrine() {
         </div>
 
         <div className="mx-auto max-w-7xl">
-  <div className="max-w-4xl">
+  <div className="mx-auto max-w-4xl text-center">
     <Pill>Para coordenações médicas, hospitais e grupos de plantão</Pill>
 
     <h1 className="mt-8 text-4xl font-black leading-[1.02] tracking-tight text-white sm:text-5xl md:text-7xl lg:leading-[1.02]">
-      A escala deixa de ser um problema diário.
+      Organize a escala médica antes que ela vire problema.
       <br />
       <span className="bg-gradient-to-r from-[#4AE2B6] to-[#219B82] bg-clip-text text-transparent">
-        E vira uma operação controlada.
+        Com controle de trocas, pendências, conflitos e fechamento.
       </span>
     </h1>
 
-    <p className="mt-8 max-w-2xl text-base leading-7 text-zinc-400 md:text-xl md:leading-8">
-      O MedTurn centraliza escala, trocas, disponibilidades, avisos,
-      conflitos, confirmação auxiliar de presença e relatórios de produção
-      em um fluxo único para coordenação e equipe médica.
+    <p className="mx-auto mt-8 max-w-3xl text-base leading-7 text-zinc-400 md:text-xl md:leading-8">
+      O MedTurn reduz o peso da coordenação ao centralizar escala, trocas,
+disponibilidades, avisos, conflitos e relatórios de produção em um fluxo
+único, acompanhável do início ao fechamento do mês.
     </p>
 
-    <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+    <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row sm:flex-wrap">
 <Link
   href="/solicitar-implantacao"
   className="inline-flex h-16 items-center justify-center rounded-2xl bg-[#4AE2B6] px-8 text-base font-black text-[#071312] shadow-[0_0_50px_-10px_#4AE2B6] transition-all hover:scale-105 hover:bg-[#5cf2c5]"
@@ -767,12 +767,13 @@ export default function MedTurnVitrine() {
 </Link>
     </div>
 
-    <div className="mt-10 grid gap-3 text-sm sm:grid-cols-3">
-      {[
-        "Trocas com aprovação",
-        "Pendências por hospital",
-        "Fechamento mais organizado",
-      ].map((item) => (
+    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  {[
+    "Trocas com aprovação da coordenação",
+    "Pendências visíveis por hospital",
+    "Conflitos identificados com antecedência",
+    "Fechamento mensal mais organizado",
+  ].map((item) => (
         <div
           key={item}
           className="flex items-center justify-center gap-2 rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 font-semibold text-zinc-300"
@@ -790,21 +791,21 @@ export default function MedTurnVitrine() {
     </p>
 
     <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-      Recebe um fluxo implantado com acompanhamento, configuração conforme a
-      rotina do serviço e orientação inicial para coordenação e equipe médica.
+      Recebe um fluxo implantado com acompanhamento, configurado conforme a
+rotina do serviço e com orientação inicial para coordenação e equipe médica.
     </p>
   </div>
 
   <div className="rounded-[28px] border border-white/5 bg-white/[0.03] p-5">
-    <p className="text-sm font-bold text-white">
-      Criado a partir da rotina real de plantões médicos.
-    </p>
+  <p className="text-sm font-bold text-white">
+    Criado a partir da rotina real de plantões médicos.
+  </p>
 
-    <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-      O MedTurn foi desenhado para resolver problemas práticos de escala:
-      trocas, disponibilidade, conflitos, avisos, pendências e fechamento mensal.
-    </p>
-  </div>
+  <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+    O MedTurn foi desenhado para problemas práticos de escala:
+    trocas, disponibilidade, conflitos, avisos, pendências e fechamento mensal.
+  </p>
+</div>
 </div>
   </div>
 
