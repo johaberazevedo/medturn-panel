@@ -107,33 +107,62 @@ function EditarPlantaoContent() {
     year: 'numeric',
   });
 
-  async function loadHospitalFromStorage() {
-    const storedHospitalId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem('activeHospitalId')
-        : null;
+  async function loadHospitalFromStorage(userId: string) {
+  if (typeof window === 'undefined') return null;
 
-    if (!storedHospitalId) {
-      router.push('/selecionar-hospital');
-      return null;
-    }
+  const hospitalFromUrl = searchParams.get('hospitalId');
 
-    const { data: hosp, error: hospError } = await supabase
-      .from('hospitals')
-      .select('id, name')
-      .eq('id', storedHospitalId)
-      .maybeSingle();
+  const scopedKey = `activeHospitalId:${userId}`;
+  const scopedHospitalId = window.localStorage.getItem(scopedKey);
 
-    if (hospError || !hosp) {
-      setErrorMsg('Não foi possível identificar o hospital selecionado.');
-      return null;
-    }
+  // Prioridade:
+  // 1. hospitalId vindo da URL
+  // 2. hospital salvo por usuário
+  // 3. fallback antigo, só para compatibilidade
+  const storedHospitalId =
+    hospitalFromUrl ||
+    scopedHospitalId ||
+    window.localStorage.getItem('activeHospitalId');
 
-    setHospitalId(hosp.id);
-    setHospitalName(hosp.name ?? 'Hospital');
-
-    return hosp.id as string;
+  if (!storedHospitalId) {
+    router.push('/selecionar-hospital');
+    return null;
   }
+
+  // Confirma que o usuário pertence a esse hospital
+  const { data: membership, error: membershipError } = await supabase
+    .from('hospital_users')
+    .select('hospital_id')
+    .eq('user_id', userId)
+    .eq('hospital_id', storedHospitalId)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    setErrorMsg('Você não tem vínculo com o hospital selecionado.');
+    router.replace('/selecionar-hospital');
+    return null;
+  }
+
+  const { data: hosp, error: hospError } = await supabase
+    .from('hospitals')
+    .select('id, name')
+    .eq('id', storedHospitalId)
+    .maybeSingle();
+
+  if (hospError || !hosp) {
+    setErrorMsg('Não foi possível identificar o hospital selecionado.');
+    return null;
+  }
+
+  // Mantém o hospital ativo salvo no padrão correto
+  window.localStorage.setItem(scopedKey, hosp.id);
+  window.localStorage.setItem('activeHospitalId', hosp.id);
+
+  setHospitalId(hosp.id);
+  setHospitalName(hosp.name ?? 'Hospital');
+
+  return hosp.id as string;
+}
 
   async function loadDoctors(hospital_id: string) {
     const { data: rows, error } = await supabase
@@ -219,7 +248,7 @@ function EditarPlantaoContent() {
         return;
       }
 
-      const hospital_id = await loadHospitalFromStorage();
+      const hospital_id = await loadHospitalFromStorage(user.id);
       if (!hospital_id) return;
 
       // 🔒 BLOQUEIO: só admin/coordenador pode editar escala
@@ -232,7 +261,7 @@ function EditarPlantaoContent() {
 
       if (memErr) {
         console.error('Erro ao checar role:', memErr);
-        router.replace(`/escala?date=${dateParam}`);
+        router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
         return;
       }
 
@@ -242,7 +271,7 @@ function EditarPlantaoContent() {
         membership?.role === 'coordenador';
 
       if (!isAllowed) {
-        router.replace(`/escala?date=${dateParam}`);
+        router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
         return;
       }
 
@@ -637,7 +666,7 @@ function EditarPlantaoContent() {
       await syncShiftsForDay(dateParam!);
 
       // recarrega como você já fazia (bom porque re-hidrata shiftId e estado)
-      window.location.href = `/escala?date=${dateParam}`;
+      router.replace(`/escala?date=${dateParam}&hospitalId=${hospitalId}`);
     } catch (err: any) {
       setErrorMsg(`Erro ao salvar: ${err?.message ?? 'desconhecido'}`);
       setSaving(false);
@@ -737,7 +766,13 @@ function EditarPlantaoContent() {
 
             <div className="flex flex-wrap gap-2 lg:justify-end">
               <button
-                onClick={() => router.push(`/escala?date=${dateParam}`)}
+                onClick={() =>
+  router.push(
+    hospitalId
+      ? `/escala?date=${dateParam}&hospitalId=${hospitalId}`
+      : `/escala?date=${dateParam}`
+  )
+}
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95"
               >
                 Voltar para escala

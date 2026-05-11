@@ -287,10 +287,16 @@ const shiftsRequestIdRef = useRef(0);
       newYear++;
     }
 
-    setMonth(newMonth);
-    setYear(newYear);
+setMonth(newMonth);
+setYear(newYear);
 
-    if (hospitalId) loadShifts(hospitalId, newYear, newMonth);
+if (hospitalId) {
+  router.replace(
+    `/escala?date=${newYear}-${String(newMonth + 1).padStart(2, '0')}-01&hospitalId=${hospitalId}`
+  );
+
+  loadShifts(hospitalId, newYear, newMonth);
+}
   }
 
   async function handleSwitchHospital(targetHospitalId: string, targetHospitalName?: string) {
@@ -313,6 +319,10 @@ const shiftsRequestIdRef = useRef(0);
     setHospitalId(targetHospitalId);
     setHospitalName(targetHospitalName ?? 'Hospital');
     setShifts([]);
+
+router.replace(
+  `/escala?date=${year}-${String(month + 1).padStart(2, '0')}-01&hospitalId=${targetHospitalId}`
+);
 
     await loadShifts(targetHospitalId, year, month, true);
   } catch (e) {
@@ -340,16 +350,24 @@ const shiftsRequestIdRef = useRef(0);
 
     setCurrentUserId(user.id);
 
-    const storedHospitalId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
-        : null;
+    const hospitalFromUrl = searchParams.get('hospitalId');
 
-    if (!storedHospitalId) {
-      setLoading(false);
-      router.push('/selecionar-hospital');
-      return;
-    }
+const storedHospitalId =
+  hospitalFromUrl ||
+  (typeof window !== 'undefined'
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
+    : null);
+
+if (!storedHospitalId) {
+  setLoading(false);
+  router.push('/selecionar-hospital');
+  return;
+}
+
+if (typeof window !== 'undefined') {
+  window.localStorage.setItem(`activeHospitalId:${user.id}`, storedHospitalId);
+  window.localStorage.setItem('activeHospitalId', storedHospitalId);
+}
 
     const [membershipResult, shortcutResult, profileResult, hospitalResult] =
       await Promise.all([
@@ -646,6 +664,10 @@ const shiftsByDate = useMemo(() => {
 
       setYear(targetYearNum);
       setMonth(targetMonthIndex);
+
+router.replace(
+  `/escala?date=${targetYearNum}-${String(targetMonthIndex + 1).padStart(2, '0')}-01&hospitalId=${hospitalId}`
+);
       await loadShifts(hospitalId, targetYearNum, targetMonthIndex);
     } catch (err: any) {
       setCopyError(`Erro inesperado ao copiar escala: ${err?.message ?? String(err)}`);
@@ -1009,15 +1031,15 @@ const shiftsByPeriod = dayData?.byPeriod ?? {
                     )}
 
                     {day && iso && (
-                      <button
-                        onClick={() =>
-                          router.push(`/escala/editar?date=${iso}`)
-                        }
-                        className="mt-auto pt-2 text-left text-[10px] font-black uppercase tracking-wider text-[#40C0A2] hover:text-[#1E7564]"
-                      >
-                        + editar / adicionar
-                      </button>
-                    )}
+  <button
+    onClick={() =>
+      router.push(`/escala/editar?date=${iso}&hospitalId=${hospitalId}`)
+    }
+    className="mt-auto pt-2 text-left text-[10px] font-black uppercase tracking-wider text-[#40C0A2] hover:text-[#1E7564]"
+  >
+    + editar / adicionar
+  </button>
+)}
                   </div>
                 );
               })
