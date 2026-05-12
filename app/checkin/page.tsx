@@ -33,35 +33,112 @@ export default function CheckinAdminPage() {
   const [salvando, setSalvando] = useState(false);
 
   const carregarDados = useCallback(async (hId: string, d: string) => {
-    setFetching(true);
-    const { data: hosp } = await supabase.from('hospitals').select('*').eq('id', hId).single();
-    if (hosp) setHospConfig({ 
-      name: hosp.name, is_enabled: hosp.is_checkin_enabled, 
-      lat: hosp.latitude?.toString() || '', lng: hosp.longitude?.toString() || '', 
-      radius: hosp.geofence_radius?.toString() || '200' 
+  setFetching(true);
+
+  const { data: hosp } = await supabase
+    .from('hospitals')
+    .select('*')
+    .eq('id', hId)
+    .single();
+
+  if (hosp) {
+    setHospConfig({
+      name: hosp.name,
+      is_enabled: hosp.is_checkin_enabled,
+      lat: hosp.latitude?.toString() || '',
+      lng: hosp.longitude?.toString() || '',
+      radius: hosp.geofence_radius?.toString() || '200',
     });
+  }
 
-    const { data: sData } = await supabase.from('shifts').select('*, users(full_name, email)').eq('hospital_id', hId).eq('date', d).order('period');
-    const sIds = sData?.map(x => x.id) || [];
-    const { data: cData } = await supabase.from('shift_checkins').select('*').in('shift_id', sIds);
-    
-    setShifts(sData?.map(s => ({ ...s, users: Array.isArray(s.users) ? s.users[0] : s.users })) || []);
-    setCheckins(cData || []);
-    setFetching(false);
-  }, []);
+  const { data: sData } = await supabase
+    .from('shifts')
+    .select('*, users(full_name, email)')
+    .eq('hospital_id', hId)
+    .eq('date', d)
+    .order('period');
 
-  useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return router.push('/login');
-      const hId = localStorage.getItem(`activeHospitalId:${user.id}`);
-      if (!hId) return router.push('/selecionar-hospital');
-      setHospitalId(hId);
-      await carregarDados(hId, date);
+  const sIds = sData?.map((x) => x.id) || [];
+
+  let cData: any[] = [];
+
+  if (sIds.length > 0) {
+    const { data } = await supabase
+      .from('shift_checkins')
+      .select('*')
+      .in('shift_id', sIds);
+
+    cData = data || [];
+  }
+
+  setShifts(
+    sData?.map((s) => ({
+      ...s,
+      users: Array.isArray(s.users) ? s.users[0] : s.users,
+    })) || []
+  );
+
+  setCheckins(cData);
+  setFetching(false);
+}, []);
+
+useEffect(() => {
+  async function init() {
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
       setLoading(false);
+      router.push('/login');
+      return;
     }
-    init();
-  }, [router, date, carregarDados]);
+
+    const hId =
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
+        : null;
+
+    if (!hId) {
+      setLoading(false);
+      router.push('/selecionar-hospital');
+      return;
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from('hospital_users')
+      .select('role, is_admin')
+      .eq('user_id', user.id)
+      .eq('hospital_id', hId)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Erro ao verificar permissão do check-in:', membershipError);
+      setLoading(false);
+      router.replace('/medico');
+      return;
+    }
+
+    const isAdmin =
+      membership?.is_admin === true ||
+      membership?.role === 'admin' ||
+      membership?.role === 'coordenador';
+
+    if (!isAdmin) {
+      setLoading(false);
+      router.replace('/medico');
+      return;
+    }
+
+    setHospitalId(hId);
+    await carregarDados(hId, date);
+    setLoading(false);
+  }
+
+  init();
+}, [router, date, carregarDados]);
 
   const grouped = useMemo(() => {
     const byPeriod: Record<string, any[]> = { manha: [], tarde: [], noite: [], '24h': [] };
@@ -138,8 +215,28 @@ export default function CheckinAdminPage() {
         </section>
 
         {/* LISTAGEM AGRUPADA POR TURNOS */}
-        <div className="space-y-6">
-          {PERIOD_ORDER.map(p => {
+<div className="space-y-6">
+  {shifts.filter((s) => !!s.doctor_user_id).length === 0 && (
+    <div className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm">
+      <p className="text-sm font-black uppercase tracking-widest text-slate-400">
+        Nenhum plantão encontrado
+      </p>
+      <h2 className="mt-2 text-xl font-black text-slate-900">
+        Não há médicos escalados para esta data.
+      </h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+        Selecione outra data ou cadastre a escala do dia para acompanhar os registros de presença.
+      </p>
+      <button
+        onClick={() => router.push(`/escala/editar?date=${date}`)}
+
+        className="mt-5 rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800 active:scale-95"
+      >
+        Ir para escala do dia
+      </button>
+    </div>
+  )}
+  {PERIOD_ORDER.map((p) => {
             const list = grouped[p];
             if (list.length === 0) return null;
             return (

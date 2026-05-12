@@ -1139,6 +1139,13 @@ async function openMessageModal() {
   Mensagem do plantão
 </button>
 
+<button
+  onClick={() => router.push('/checkin')}
+  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-emerald-700 shadow-sm hover:bg-emerald-100 active:scale-95"
+>
+  Check-in
+</button>
+
         <button
           onClick={() => router.push('/selecionar-hospital')}
           className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-100 active:scale-95"
