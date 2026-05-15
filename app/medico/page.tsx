@@ -4,8 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '../components/OneSignalInit';
-import EnableWebPushButton from '../components/EnableWebPushButton';
-import InstallMedTurnCard from '../components/InstallMedTurnCard';
 import PilotManifestLink from '../components/PilotManifestLink';
 
 type NextShift = {
@@ -317,8 +315,6 @@ useEffect(() => {
 
       <main className="p-6 space-y-4">
         
-<EnableWebPushButton />
-<InstallMedTurnCard />
         {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
         {canCheckin && (
           <button 

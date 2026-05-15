@@ -13,6 +13,7 @@ export default function PerfilPage() {
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const [primaryRole, setPrimaryRole] = useState<'admin' | 'doctor' | 'coordenador' | null>(null);
   
   // Estados do formulário de senha
   const [newPassword, setNewPassword] = useState('');
@@ -34,6 +35,27 @@ if (!user) {
 
 setCurrentUserId(user.id);
 setUserEmail(user.email ?? '');
+
+const { data: memberships, error: membershipsError } = await supabase
+  .from('hospital_users')
+  .select('role')
+  .eq('user_id', user.id);
+
+if (membershipsError) {
+  console.error('Erro ao verificar vínculos do usuário:', membershipsError);
+}
+
+const roles = (memberships ?? []).map((item: any) => item.role);
+
+if (roles.includes('admin')) {
+  setPrimaryRole('admin');
+} else if (roles.includes('coordenador')) {
+  setPrimaryRole('coordenador');
+} else if (roles.includes('doctor')) {
+  setPrimaryRole('doctor');
+} else {
+  setPrimaryRole(null);
+}
 
 const { data: profile, error: profileError } = await supabase
   .from('users')
@@ -178,24 +200,47 @@ return (
           </div>
         </section>
 
-<section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-  <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
-    Notificações
-  </p>
+        {primaryRole === 'admin' && (
+          <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+              Notificações
+            </p>
 
-  <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
-    Notificações administrativas
-  </h2>
+            <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+              Pendências administrativas
+            </h2>
 
-  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-    Receba avisos quando uma troca de plantão já tiver sido aceita pelos dois plantonistas e estiver aguardando sua confirmação.
-  </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              Receba avisos quando uma troca de plantão já tiver sido aceita pelos dois plantonistas e estiver aguardando sua confirmação.
+            </p>
 
-  <div className="mt-5 space-y-3">
-    <EnableWebPushButton />
-    <InstallMedTurnCard />
-  </div>
-</section>
+            <div className="mt-5 space-y-3">
+              <EnableWebPushButton />
+              <InstallMedTurnCard />
+            </div>
+          </section>
+        )}
+
+        {primaryRole === 'doctor' && (
+          <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+              Notificações
+            </p>
+
+            <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+              Plantões e trocas
+            </h2>
+
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              Receba avisos sobre plantões disponíveis, ofertas direcionadas e atualizações das suas trocas.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <EnableWebPushButton />
+              <InstallMedTurnCard />
+            </div>
+          </section>
+        )}
 
         <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
