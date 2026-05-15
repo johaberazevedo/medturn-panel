@@ -3,12 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import OneSignalInit from '@/app/components/OneSignalInit';
+import EnableWebPushButton from '@/app/components/EnableWebPushButton';
+import InstallMedTurnCard from '@/app/components/InstallMedTurnCard';
 
 export default function PerfilPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   // Estados do formulário de senha
   const [newPassword, setNewPassword] = useState('');
@@ -28,6 +32,7 @@ if (!user) {
   return;
 }
 
+setCurrentUserId(user.id);
 setUserEmail(user.email ?? '');
 
 const { data: profile, error: profileError } = await supabase
@@ -90,7 +95,13 @@ setLoading(false);
     );
   }
 
-  return (
+return (
+  <>
+    <OneSignalInit
+      enabled={true}
+      externalId={currentUserId}
+    />
+
     <div className="min-h-screen bg-slate-50">
       <header className="rounded-b-[28px] bg-white shadow-sm">
         <div className="mx-auto flex max-w-5xl items-start px-6 py-5">
@@ -167,6 +178,25 @@ setLoading(false);
           </div>
         </section>
 
+<section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+  <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
+    Notificações
+  </p>
+
+  <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">
+    Notificações administrativas
+  </h2>
+
+  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+    Receba avisos quando uma troca de plantão já tiver sido aceita pelos dois plantonistas e estiver aguardando sua confirmação.
+  </p>
+
+  <div className="mt-5 space-y-3">
+    <EnableWebPushButton />
+    <InstallMedTurnCard />
+  </div>
+</section>
+
         <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-[#40C0A2]">
             Segurança
@@ -234,5 +264,6 @@ setLoading(false);
         </section>
       </main>
     </div>
-  );
+  </>
+);
 }
