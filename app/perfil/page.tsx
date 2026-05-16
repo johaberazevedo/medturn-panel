@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '@/app/components/OneSignalInit';
 import EnableWebPushButton from '@/app/components/EnableWebPushButton';
 import InstallMedTurnCard from '@/app/components/InstallMedTurnCard';
+import PilotManifestLink from '@/app/components/PilotManifestLink';
 
 export default function PerfilPage() {
   const router = useRouter();
@@ -49,10 +50,10 @@ const roles = (memberships ?? []).map((item: any) => item.role);
 
 if (roles.includes('admin')) {
   setPrimaryRole('admin');
-} else if (roles.includes('coordenador')) {
-  setPrimaryRole('coordenador');
 } else if (roles.includes('doctor')) {
   setPrimaryRole('doctor');
+} else if (roles.includes('coordenador')) {
+  setPrimaryRole('coordenador');
 } else {
   setPrimaryRole(null);
 }
@@ -119,8 +120,10 @@ setLoading(false);
 
 return (
   <>
+<PilotManifestLink enabled={true} />
+
     <OneSignalInit
-      enabled={true}
+      enabled={primaryRole === 'admin' || primaryRole === 'doctor'}
       externalId={currentUserId}
     />
 
@@ -158,12 +161,22 @@ return (
                 Voltar
               </button>
 
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="rounded-2xl bg-slate-950 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95"
-              >
-                Dashboard
-              </button>
+<button
+  onClick={() => {
+    if (primaryRole === 'admin') {
+      router.push('/dashboard');
+    } else if (primaryRole === 'doctor') {
+      router.push('/medico');
+    } else if (primaryRole === 'coordenador') {
+      router.push('/coordenador/escala');
+    } else {
+      router.push('/login');
+    }
+  }}
+  className="rounded-2xl bg-slate-950 px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-sm hover:bg-slate-800 active:scale-95"
+>
+  Início
+</button>
             </div>
           </div>
         </div>

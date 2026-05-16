@@ -408,16 +408,21 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    const isAllowed =
-      membership?.is_admin === true ||
-      membership?.role === 'admin' ||
-      membership?.role === 'coordenador';
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin';
 
-    if (!isAllowed) {
-      setLoading(false);
-      router.replace('/medico');
-      return;
-    }
+if (!isAllowed) {
+  setLoading(false);
+
+  if (membership?.role === 'coordenador') {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/medico');
+  }
+
+  return;
+}
 
     if (hospError || !hosp) {
       console.error('Erro ao carregar hospital:', hospError);
@@ -430,13 +435,12 @@ if (typeof window !== 'undefined') {
     }
 
     const shortcuts = (shortcutRows ?? [])
-      .filter((row: any) => {
-        return (
-          row.is_admin === true ||
-          row.role === 'admin' ||
-          row.role === 'coordenador'
-        );
-      })
+.filter((row: any) => {
+  return (
+    row.is_admin === true ||
+    row.role === 'admin'
+  );
+})
       .map((row: any) => {
         const hospRel = Array.isArray(row.hospitals)
           ? row.hospitals[0]

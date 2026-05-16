@@ -251,34 +251,38 @@ function EditarPlantaoContent() {
       const hospital_id = await loadHospitalFromStorage(user.id);
       if (!hospital_id) return;
 
-      // 🔒 BLOQUEIO: só admin/coordenador pode editar escala
-      const { data: membership, error: memErr } = await supabase
-        .from('hospital_users')
-        .select('role, is_admin')
-        .eq('user_id', user.id)
-        .eq('hospital_id', hospital_id)
-        .maybeSingle();
+      // 🔒 BLOQUEIO: só admin pode editar escala
+const { data: membership, error: memErr } = await supabase
+  .from('hospital_users')
+  .select('role, is_admin')
+  .eq('user_id', user.id)
+  .eq('hospital_id', hospital_id)
+  .maybeSingle();
 
-      if (memErr) {
-        console.error('Erro ao checar role:', memErr);
-        router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
-        return;
-      }
+if (memErr) {
+  console.error('Erro ao checar role:', memErr);
+  router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
+  return;
+}
 
-      const isAllowed =
-        membership?.is_admin === true ||
-        membership?.role === 'admin' ||
-        membership?.role === 'coordenador';
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin';
 
-      if (!isAllowed) {
-        router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
-        return;
-      }
+if (!isAllowed) {
+  if (membership?.role === 'coordenador') {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace(`/escala?date=${dateParam}&hospitalId=${hospital_id}`);
+  }
 
-      // 🔓 Só chega aqui se for admin ou coordenador
-      await loadDoctors(hospital_id);
-      await loadShiftsForDay(hospital_id);
-      await loadAvailabilityForDay(hospital_id);
+  return;
+}
+
+// 🔓 Só chega aqui se for admin
+await loadDoctors(hospital_id);
+await loadShiftsForDay(hospital_id);
+await loadAvailabilityForDay(hospital_id);
     }
 
     init();

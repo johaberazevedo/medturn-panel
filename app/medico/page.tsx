@@ -55,6 +55,7 @@ const [stats, setStats] = useState({ disponiveis: 0, disponibilidade30d: 0 });
 const [nextShift, setNextShift] = useState<NextShift | null>(null);
 const [canCheckin, setCanCheckin] = useState(false);
 const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const [showPushReminder, setShowPushReminder] = useState(false);
 
 const loadHomeData = useCallback(async (userId: string) => {
   const { data: profile } = await supabase
@@ -181,7 +182,45 @@ const { data: swapRows, error: swapErr } = await supabase
       return;
     }
 
-    setCurrentUserId(user.id);
+const { data: memberships, error: membershipsError } = await supabase
+  .from('hospital_users')
+  .select('role, is_admin')
+  .eq('user_id', user.id);
+
+if (membershipsError) {
+  console.error('Erro ao verificar perfil do usuário:', membershipsError);
+  setLoading(false);
+  router.replace('/login');
+  return;
+}
+
+const membershipsList = memberships ?? [];
+
+const hasDoctorRole = membershipsList.some((item: any) => item.role === 'doctor');
+
+const hasAdminRole = membershipsList.some(
+  (item: any) => item.is_admin === true || item.role === 'admin'
+);
+
+const hasCoordinatorRole = membershipsList.some(
+  (item: any) => item.role === 'coordenador'
+);
+
+const canViewMedicoPage = hasDoctorRole || hasAdminRole;
+
+if (!canViewMedicoPage) {
+  setLoading(false);
+
+  if (hasCoordinatorRole) {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/login');
+  }
+
+  return;
+}
+
+setCurrentUserId(user.id);
 
 await loadHomeData(user.id);
 setLoading(false);
@@ -189,6 +228,17 @@ setLoading(false);
 
   init();
 }, [router, loadHomeData]);
+
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+
+  if (!('Notification' in window)) {
+    setShowPushReminder(false);
+    return;
+  }
+
+  setShowPushReminder(Notification.permission === 'default');
+}, []);
 
 useEffect(() => {
   if (!currentUserId) return;
@@ -315,6 +365,20 @@ useEffect(() => {
 
       <main className="p-6 space-y-4">
         
+        {showPushReminder && (
+          <button
+            onClick={() => router.push('/perfil')}
+            className="w-full rounded-3xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-left shadow-sm active:scale-[0.99]"
+          >
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
+              Ative as notificações
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">
+              Receba avisos de propostas, trocas e atualizações importantes.
+            </p>
+          </button>
+        )}
+
         {/* ✅ NOVO BOTÃO DE CHECK-IN: Aparece seguindo a sua lógica */}
         {canCheckin && (
           <button 

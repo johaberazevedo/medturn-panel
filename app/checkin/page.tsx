@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { 
-  Settings, MapPin, Power, Save, ChevronLeft, Loader2, Globe,
-  Activity, Clock, CheckCircle2, AlertCircle, RefreshCw, UserX
+import {
+  Settings, Save, ChevronLeft, Loader2, Globe,
+  Clock, CheckCircle2, RefreshCw, UserX
 } from 'lucide-react';
 
 // --- CONFIG ---
@@ -96,16 +96,22 @@ useEffect(() => {
       return;
     }
 
-    const hId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem(`activeHospitalId:${user.id}`)
-        : null;
+const hId =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`) ??
+      window.localStorage.getItem('activeHospitalId')
+    : null;
 
     if (!hId) {
       setLoading(false);
       router.push('/selecionar-hospital');
       return;
     }
+
+if (typeof window !== 'undefined') {
+  window.localStorage.setItem(`activeHospitalId:${user.id}`, hId);
+  window.localStorage.setItem('activeHospitalId', hId);
+}
 
     const { data: membership, error: membershipError } = await supabase
       .from('hospital_users')
@@ -121,16 +127,21 @@ useEffect(() => {
       return;
     }
 
-    const isAdmin =
-      membership?.is_admin === true ||
-      membership?.role === 'admin' ||
-      membership?.role === 'coordenador';
+const isAdmin =
+  membership?.is_admin === true ||
+  membership?.role === 'admin';
 
-    if (!isAdmin) {
-      setLoading(false);
-      router.replace('/medico');
-      return;
-    }
+if (!isAdmin) {
+  setLoading(false);
+
+  if (membership?.role === 'coordenador') {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/medico');
+  }
+
+  return;
+}
 
     setHospitalId(hId);
     await carregarDados(hId, date);
@@ -227,13 +238,18 @@ useEffect(() => {
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
         Selecione outra data ou cadastre a escala do dia para acompanhar os registros de presença.
       </p>
-      <button
-        onClick={() => router.push(`/escala/editar?date=${date}`)}
-
-        className="mt-5 rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800 active:scale-95"
-      >
-        Ir para escala do dia
-      </button>
+<button
+  onClick={() =>
+    router.push(
+      hospitalId
+        ? `/escala/editar?date=${date}&hospitalId=${hospitalId}`
+        : `/escala/editar?date=${date}`
+    )
+  }
+  className="mt-5 rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800 active:scale-95"
+>
+  Ir para escala do dia
+</button>
     </div>
   )}
   {PERIOD_ORDER.map((p) => {

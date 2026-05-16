@@ -164,6 +164,25 @@ if (!meErr && me?.role) {
   setMyRole(null);
 }
 
+if (meErr || !me) {
+  setError('Você não tem vínculo com este hospital.');
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
+
+if (me.role === 'coordenador') {
+  setLoading(false);
+  router.replace('/coordenador/escala');
+  return;
+}
+
+if (me.role !== 'admin') {
+  setLoading(false);
+  router.replace('/medico');
+  return;
+}
+
 if (doctorsError) {
   setError('Não foi possível carregar a lista de médicos.');
 } else {
@@ -332,11 +351,11 @@ setLoading(false);
     setError(null);
     setActionMessage(null);
 
-    // Só admin/coordenador pode vincular
-    if (!(myRole === 'admin' || myRole === 'coordenador')) {
-      setError('Apenas Administrador ou Coordenador pode vincular médicos em outro hospital.');
-      return;
-    }
+    // Só admin pode vincular
+if (myRole !== 'admin') {
+  setError('Apenas Administrador pode vincular médicos em outro hospital.');
+  return;
+}
 
     if (!linkToHospitalId) {
       setError('Selecione o hospital destino.');
@@ -395,11 +414,11 @@ setLoading(false);
     setImportErr(null);
     setImportMsg(null);
 
-    // Só admin/coordenador pode disparar
-    if (!(myRole === 'admin' || myRole === 'coordenador')) {
-      setImportErr('Apenas Administrador ou Coordenador pode importar médicos.');
-      return;
-    }
+    // Só admin pode disparar
+if (myRole !== 'admin') {
+  setImportErr('Apenas Administrador pode importar médicos.');
+  return;
+}
 
     if (!importFromHospitalId) {
       setImportErr('Selecione o hospital de origem.');
@@ -826,8 +845,8 @@ setLoading(false);
                             <button
                               onClick={() => openLinkModal(doctor)}
                               className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                              disabled={!(myRole === 'admin' || myRole === 'coordenador')}
-                              title={!(myRole === 'admin' || myRole === 'coordenador') ? 'Sem permissão' : 'Vincular em outro hospital'}
+                              disabled={myRole !== 'admin'}
+title={myRole !== 'admin' ? 'Sem permissão' : 'Vincular em outro hospital'}
                             >
                               Vincular
                             </button>
@@ -912,7 +931,7 @@ setLoading(false);
                       setImportMsg(null);
                     }}
                     className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                    disabled={!(myRole === 'admin' || myRole === 'coordenador') || importing}
+                    disabled={myRole !== 'admin' || importing}
                   >
                     <option value="">Selecione...</option>
                     {hospitals
@@ -930,11 +949,11 @@ setLoading(false);
 
                 <button
                   onClick={handleImportAllFromHospital}
-                  disabled={
-                    importing ||
-                    !(myRole === 'admin' || myRole === 'coordenador') ||
-                    !importFromHospitalId
-                  }
+disabled={
+  importing ||
+  myRole !== 'admin' ||
+  !importFromHospitalId
+}
                   className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:opacity-50"
                 >
                   {importing ? 'Importando...' : 'Importar tudo'}
@@ -952,9 +971,9 @@ setLoading(false);
                 </div>
               )}
 
-              {!(myRole === 'admin' || myRole === 'coordenador') && (
+              {myRole !== 'admin' && (
                 <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  Você não tem permissão para importar. Apenas <strong>Administrador</strong> ou <strong>Coordenador</strong>.
+                  Você não tem permissão para importar. Apenas <strong>Administrador</strong>.
                 </div>
               )}
             </section>

@@ -23,7 +23,8 @@ const [userId, setUserId] = useState<string | null>(null);
 const [choosingHospitalId, setChoosingHospitalId] = useState<string | null>(null);
 
   const rawRedirect = searchParams.get('redirect');
-  const redirect = rawRedirect && rawRedirect.startsWith('/') ? rawRedirect : '/dashboard';
+const hasExplicitRedirect = !!rawRedirect && rawRedirect.startsWith('/');
+const redirect = hasExplicitRedirect ? rawRedirect : '/dashboard';
 
 useEffect(() => {
   async function load() {
@@ -77,11 +78,13 @@ useEffect(() => {
     load();
   }, [router]);
 
-  function choose(hospitalId: string) {
+  function choose(row: HospitalPickRow) {
   if (!userId) {
     router.push('/login');
     return;
   }
+
+  const hospitalId = row.hospital_id;
 
   setChoosingHospitalId(hospitalId);
 
@@ -92,9 +95,20 @@ useEffect(() => {
 
   let next = redirect;
 
+  // Se não veio redirect explícito, escolhe a página inicial pelo perfil
+  if (!hasExplicitRedirect) {
+    if (row.is_admin === true || row.role === 'admin') {
+      next = '/dashboard';
+    } else if (row.role === 'coordenador') {
+      next = '/coordenador/escala';
+    } else {
+      next = '/medico';
+    }
+  }
+
   if (typeof window !== 'undefined') {
     try {
-      const url = new URL(redirect, window.location.origin);
+      const url = new URL(next, window.location.origin);
 
       const shouldAttachHospitalId =
         url.pathname !== '/dashboard' &&
@@ -106,7 +120,7 @@ useEffect(() => {
 
       next = url.pathname + url.search + url.hash;
     } catch {
-      next = redirect;
+      // mantém o next como está
     }
   }
 
@@ -181,7 +195,7 @@ useEffect(() => {
                 return (
 <button
   key={r.hospital_id}
-  onClick={() => choose(r.hospital_id)}
+  onClick={() => choose(r)}
   disabled={choosingHospitalId !== null}
   className="group rounded-[28px] border border-slate-100 bg-slate-50 p-5 text-left transition hover:border-[#40C0A2]/30 hover:bg-[#40C0A2]/5 active:scale-[0.99] disabled:opacity-60"
 >

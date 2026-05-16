@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import OneSignalInit from '../components/OneSignalInit';
 
 type MembershipRow = {
   hospital_id: string;
@@ -382,9 +383,8 @@ const loadDoctors = useCallback(async (hId: string) => {
     try {
       const adminHospitals = (memberships ?? []).filter((m: any) => {
         const isAllowed =
-          m?.is_admin === true ||
-          m?.role === 'admin' ||
-          m?.role === 'coordenador';
+  m?.is_admin === true ||
+  m?.role === 'admin';
 
         return isAllowed && m.hospital_id !== currentHospitalId;
       });
@@ -731,10 +731,10 @@ const loadBackgroundDashboardData = useCallback(
     }
 
     const adminHospitalIds = (memberships ?? [])
-      .filter((m: any) => {
-        return m?.is_admin === true || m?.role === 'admin' || m?.role === 'coordenador';
-      })
-      .map((m: any) => m.hospital_id);
+  .filter((m: any) => {
+    return m?.is_admin === true || m?.role === 'admin';
+  })
+  .map((m: any) => m.hospital_id);
 
     await Promise.all([
       loadOtherHospitalAlerts(hId, memberships ?? []),
@@ -862,12 +862,17 @@ if (memErr) {
 
 const isAllowed =
   membership?.is_admin === true ||
-  membership?.role === 'admin' ||
-  membership?.role === 'coordenador';
+  membership?.role === 'admin';
 
 if (!isAllowed) {
   setLoading(false);
-  router.replace('/medico');
+
+  if (membership?.role === 'coordenador') {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/medico');
+  }
+
   return;
 }
 
@@ -1088,7 +1093,13 @@ async function openMessageModal() {
 );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <>
+      <OneSignalInit
+        enabled={true}
+        externalId={currentUserId}
+      />
+
+      <div className="min-h-screen bg-slate-50">
 <header className="rounded-b-[28px] bg-white shadow-sm">
   <div className="mx-auto flex max-w-[1500px] items-start px-6 py-5">
   <div className="flex h-20 w-20 shrink-0 items-center justify-center">
@@ -1859,6 +1870,7 @@ onClick={() => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

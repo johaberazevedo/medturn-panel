@@ -67,10 +67,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isAllowed =
-      membership?.is_admin === true ||
-      membership?.role === 'admin' ||
-      membership?.role === 'coordenador';
+const isAllowed =
+  membership?.is_admin === true ||
+  membership?.role === 'admin';
 
     if (!isAllowed) {
       return NextResponse.json(

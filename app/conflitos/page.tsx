@@ -159,9 +159,28 @@ function ConflitosPageContent() {
           return;
         }
 
-        const adminMemberships = ((memberships ?? []) as AdminMembership[]).filter((m) => {
-          return m.is_admin === true || m.role === 'admin' || m.role === 'coordenador';
-        });
+        const allMemberships = ((memberships ?? []) as AdminMembership[]);
+
+const adminMemberships = allMemberships.filter((m) => {
+  return m.is_admin === true || m.role === 'admin';
+});
+
+const hasCoordinatorRole = allMemberships.some((m) => m.role === 'coordenador');
+
+if (adminMemberships.length === 0) {
+  setAdminHospitalIds([]);
+  setConflicts([]);
+  setInitialized(true);
+  setLoading(false);
+
+  if (hasCoordinatorRole) {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/medico');
+  }
+
+  return;
+}
 
         const hospitalIds = adminMemberships.map((m) => m.hospital_id);
 

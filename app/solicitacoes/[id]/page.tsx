@@ -278,7 +278,7 @@ export default function SwapRequestDetailPage() {
 
       const realHospitalId = reqMeta.hospital_id as string;
 
-      // 🔒 BLOQUEIO: só admin/coordenador do hospital pode acessar esta página
+      // 🔒 BLOQUEIO: só admin do hospital pode acessar esta página
       const { data: membership, error: memErr } = await supabase
         .from('hospital_users')
         .select('role, is_admin')
@@ -296,15 +296,20 @@ export default function SwapRequestDetailPage() {
 
       const isAllowed =
         membership?.is_admin === true ||
-        membership?.role === 'admin' ||
-        membership?.role === 'coordenador';
+        membership?.role === 'admin';
 
-      if (!isAllowed) {
-        setErrorMsg('Você não tem permissão para gerenciar solicitações deste hospital.');
-        setLoading(false);
-        router.replace('/medico');
-        return;
-      }
+if (!isAllowed) {
+  setErrorMsg('Você não tem permissão para gerenciar solicitações deste hospital.');
+  setLoading(false);
+
+  if (membership?.role === 'coordenador') {
+    router.replace('/coordenador/escala');
+  } else {
+    router.replace('/medico');
+  }
+
+  return;
+}
 
       // 2) Se o hospital ativo estiver diferente, sincroniza (multi-hospital safe)
       // 🔑 chave por usuário (evita bagunça multi-hospital / múltiplas abas)
