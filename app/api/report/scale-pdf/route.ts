@@ -26,7 +26,7 @@ type Body = {
 type ShiftRow = {
   id?: number;
   date: string;
-  period: 'manha' | 'tarde' | 'noite' | '24h' | string;
+  period: LegacyPeriodKey | string;
   is_chief: boolean | null;
   badge: string | null;
   users: { full_name: string | null } | { full_name: string | null }[] | null;
@@ -51,10 +51,12 @@ function escapeHtml(s: string) {
 }
 
 
-type PeriodKey = 'manha' | 'tarde' | 'noite' | '24h';
+type PeriodKey = 'manha' | 'tarde' | 'noite';
+
+type LegacyPeriodKey = PeriodKey | '24h';
 
 function isPeriodKey(p: any): p is PeriodKey {
-  return p === 'manha' || p === 'tarde' || p === 'noite' || p === '24h';
+  return p === 'manha' || p === 'tarde' || p === 'noite';
 }
 // Sunday=0 ... Saturday=6
 function getDaysMatrix(year: number, monthIndex0: number) {
@@ -82,16 +84,15 @@ function getDaysMatrix(year: number, monthIndex0: number) {
 }
 
 const PERIODS: Array<{
-  key: 'manha' | 'tarde' | 'noite' | '24h';
+  key: PeriodKey;
   label: string;
   short: string;
   maxDoctors: number;
-  theme: 'manha' | 'tarde' | 'noite' | 'h24';
+  theme: PeriodKey;
 }> = [
-  { key: 'manha', label: 'MANHÃ', short: 'M', maxDoctors: 6, theme: 'manha' },
-  { key: 'tarde', label: 'TARDE', short: 'T', maxDoctors: 6, theme: 'tarde' },
-  { key: 'noite', label: 'NOITE', short: 'N', maxDoctors: 3, theme: 'noite' },
-  { key: '24h', label: '24H', short: '24H', maxDoctors: 6, theme: 'h24' },
+  { key: 'manha', label: 'MANHÃ', short: 'M', maxDoctors: 8, theme: 'manha' },
+  { key: 'tarde', label: 'TARDE', short: 'T', maxDoctors: 8, theme: 'tarde' },
+  { key: 'noite', label: 'NOITE', short: 'N', maxDoctors: 4, theme: 'noite' },
 ];
 
 function countClass(count: number, max: number) {
@@ -134,29 +135,32 @@ function buildHtml(opts: {
           }
 
           const iso = `${year}-${pad2(month1to12)}-${pad2(day)}`;
-          const dayShifts = (byDate.get(iso) ?? []).map((s) => {
-  const u = Array.isArray((s as any).users) ? (s as any).users[0] : (s as any).users;
+          const dayShifts = (byDate.get(iso) ?? [])
+  .map((s) => {
+    const u = Array.isArray((s as any).users)
+      ? (s as any).users[0]
+      : (s as any).users;
 
-  return {
-    date: (s as any).date as string,
-    period: (s as any).period as string,
-    is_chief: !!(s as any).is_chief,
-    badge: String((s as any).badge ?? '').trim(),
-    name: (u as any)?.full_name ?? 'Sem nome',
-  };
-});
+    return {
+      date: (s as any).date as string,
+      period: (s as any).period as string,
+      is_chief: !!(s as any).is_chief,
+      badge: String((s as any).badge ?? '').trim(),
+      name: (u as any)?.full_name ?? 'Sem nome',
+    };
+  })
+  .filter((s) => isPeriodKey(s.period));
 
           // counts
-          const counts: Record<'manha' | 'tarde' | 'noite' | '24h', number> = {
-            manha: 0,
-            tarde: 0,
-            noite: 0,
-            '24h': 0,
-          };
-          for (const s of dayShifts) {
-  if (isPeriodKey(s.period)) {
-    counts[s.period] += 1;
-  }
+          const counts: Record<PeriodKey, number> = {
+  manha: 0,
+  tarde: 0,
+  noite: 0,
+};
+
+for (const s of dayShifts) {
+  if (!isPeriodKey(s.period)) continue;
+  counts[s.period] += 1;
 }
 
 
@@ -356,7 +360,6 @@ html, body { height: auto; }
 .group-head.manha { background:#ecfdf5; color:#065f46; }
 .group-head.tarde { background:#eff6ff; color:#1e40af; }
 .group-head.noite { background:#f5f3ff; color:#5b21b6; }
-.group-head.h24 { background:#fff7ed; color:#9a3412; }
 
 .group-body {
   padding: 3px 4px;
@@ -507,7 +510,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const shifts = (data ?? []) as ShiftRow[];
+    const shifts = ((data ?? []) as ShiftRow[]).filter((shift) =>
+  isPeriodKey(shift.period)
+);
 
 // 🔹 Converte logo para base64
 const logoPath = path.join(process.cwd(), 'public', 'medturn-logo.png');

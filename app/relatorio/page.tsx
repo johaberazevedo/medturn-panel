@@ -109,9 +109,10 @@ export default function RelatorioPage() {
     if (!user) { router.push('/login'); return; }
 
     const storedHospitalId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem('activeHospitalId')
-        : null;
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem(`activeHospitalId:${user.id}`) ||
+      window.localStorage.getItem('activeHospitalId')
+    : null;
 
     if (!storedHospitalId) {
       setLoading(false);
@@ -143,7 +144,8 @@ export default function RelatorioPage() {
     setAdminName(profile?.full_name ?? profile?.email ?? user.email ?? 'Administrador');
 
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('activeHospitalId', hosp.id);
+      window.localStorage.setItem(`activeHospitalId:${user.id}`, hosp.id);
+window.localStorage.setItem('activeHospitalId', hosp.id);
     }
 
     setLoading(false);
@@ -540,7 +542,7 @@ export default function RelatorioPage() {
               </h2>
 
               <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                Base 12h: Manhã/Tarde = 0.5 • Noite/24h = 1.0 • Prioridade: Feriado &gt; FDS &gt; Semana
+                Base 12h: Manhã/Tarde = 0.5 • Noite = 1.0 • Prioridade: Feriado &gt; FDS &gt; Semana
               </p>
             </div>
 
@@ -754,7 +756,7 @@ export default function RelatorioPage() {
                     </button>
 
                     <div className="text-[10px] leading-relaxed text-slate-400">
-                      * Escrita será ligada depois do fluxo de import (com dedupe e validação).
+                      * Feriados manuais entram como custom e podem ser ativados, desativados ou excluídos.
                     </div>
                   </div>
                 </div>

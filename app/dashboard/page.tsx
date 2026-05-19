@@ -5,6 +5,13 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '../components/OneSignalInit';
 
+type PeriodKey = 'manha' | 'tarde' | 'noite';
+type LegacyPeriodKey = PeriodKey | '24h';
+
+function isAllowedPeriod(period: string | null | undefined): period is PeriodKey {
+  return period === 'manha' || period === 'tarde' || period === 'noite';
+}
+
 type MembershipRow = {
   hospital_id: string;
   hospitals: {
@@ -28,7 +35,7 @@ type AvailabilityNotification = {
   hospital_id: string;
   user_id: string;
   date: string;
-  period: 'manha' | 'tarde' | 'noite';
+  period: PeriodKey;
   created_at: string;
   users: {
     full_name: string | null;
@@ -55,7 +62,7 @@ type ShiftSwapNotification = {
   } | null;
   shift?: {
     date: string;
-    period: 'manha' | 'tarde' | 'noite' | '24h';
+    period: LegacyPeriodKey;
     doctor_user_id: string | null;
     doctor?: {
       full_name: string | null;
@@ -73,7 +80,7 @@ type OtherHospitalAlert = {
 type DailyShiftRow = {
   id: number;
   date: string;
-  period: 'manha' | 'tarde' | 'noite' | '24h';
+  period: LegacyPeriodKey;
   doctor_user_id: string | null;
   is_chief: boolean;
   badge: string | null;
@@ -152,7 +159,7 @@ function formatDateBR(dateStr: string, shortWeekday = true) {
     });
   }
     
-  function periodLabel(p: 'manha' | 'tarde' | 'noite' | '24h') {
+  function periodLabel(p: string) {
     switch (p) {
       case 'manha': return 'Manhã';
       case 'tarde': return 'Tarde';
@@ -162,7 +169,7 @@ function formatDateBR(dateStr: string, shortWeekday = true) {
     }
   }
 
-  function periodChipClass(p: 'manha' | 'tarde' | 'noite') {
+  function periodChipClass(p: PeriodKey) {
     if (p === 'manha') return 'bg-green-50 text-green-700 border-green-200';
     if (p === 'tarde') return 'bg-blue-50 text-blue-700 border-blue-200';
     return 'bg-purple-50 text-purple-700 border-purple-200';
@@ -270,16 +277,17 @@ function isShiftChief(row: DailyShiftRow) {
 }
 
 function buildDailyShiftMessage(rows: DailyShiftRow[], date: string, hospital: string) {
-  const grouped: Record<'manha' | 'tarde' | 'noite' | '24h', DailyShiftRow[]> = {
-    manha: [],
-    tarde: [],
-    noite: [],
-    '24h': [],
-  };
+  const grouped: Record<PeriodKey, DailyShiftRow[]> = {
+  manha: [],
+  tarde: [],
+  noite: [],
+};
 
   for (const row of rows) {
-    grouped[row.period]?.push(row);
-  }
+  if (!isAllowedPeriod(row.period)) continue;
+
+  grouped[row.period].push(row);
+}
 
   const sortChiefFirst = (items: DailyShiftRow[]) => {
     return [...items].sort((a, b) => {
@@ -335,8 +343,6 @@ return [
   section('Tarde', grouped.tarde),
   '',
   section('Noite', grouped.noite),
-  grouped['24h'].length > 0 ? '' : null,
-  grouped['24h'].length > 0 ? section('24h', grouped['24h']) : null,
   '',
   'Em caso de inconsistências, favor comunicar a coordenação.',
 ]
@@ -774,7 +780,7 @@ const generateDailyShiftMessage = useCallback(
         `)
         .eq('hospital_id', hospitalId)
         .eq('date', targetDate)
-        .in('period', ['manha', 'tarde', 'noite', '24h'])
+        .in('period', ['manha', 'tarde', 'noite'])
         .order('period', { ascending: true });
 
       if (error) {
@@ -1556,7 +1562,7 @@ onClick={() => {
               )}
 
               <div className="text-[10px] text-slate-400 mt-2">
-                📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel((r.shift?.period ?? 'manha') as any)}
+                📅 {formatDateBR(r.shift?.date ?? '')} • {periodLabel(r.shift?.period ?? 'manha')}
               </div>
             </div>
 

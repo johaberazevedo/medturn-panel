@@ -30,14 +30,26 @@ type ReportRow = {
   total_unidades: number;
 };
 
-type Body = {
+type RequestBody = {
   hospitalId: string;
   hospitalName?: string;
   year: number;
   month: number;
-  startDate: string; // yyyy-mm-dd
-  endDate: string;   // yyyy-mm-dd (next month start)
+  startDate: string;
+  endDate: string;
 };
+
+type PeriodKey = 'manha' | 'tarde' | 'noite';
+
+type ShiftDetailRow = {
+  id: number;
+  date: string;
+  period: PeriodKey;
+  doctor_user_id: string;
+  users: { full_name: string | null } | null;
+};
+
+type ShiftDetailByPeriod = Record<PeriodKey, string[]>;
 
 function pad2(n: number) {
   return String(n).padStart(2, '0');
@@ -51,9 +63,36 @@ function monthLabel(m: number) {
   return labels[m - 1] ?? `Mês ${m}`;
 }
 
+function isAllowedPeriod(period: string | null | undefined): period is PeriodKey {
+  return period === 'manha' || period === 'tarde' || period === 'noite';
+}
+
+function periodDetailLabel(period: PeriodKey) {
+  switch (period) {
+    case 'manha':
+      return 'Manhã';
+    case 'tarde':
+      return 'Tarde';
+    case 'noite':
+      return 'Noite';
+  }
+}
+
+function dayOnly(dateStr: string) {
+  return dateStr.slice(8, 10);
+}
+
+function emptyShiftDetail(): ShiftDetailByPeriod {
+  return {
+    manha: [],
+    tarde: [],
+    noite: [],
+  };
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as Body;
+    const body = (await req.json()) as RequestBody;
 
     const hospitalId = body?.hospitalId;
     const year = Number(body?.year);
@@ -113,6 +152,48 @@ export async function POST(req: Request) {
 
     const rows = (data ?? []) as ReportRow[];
 
+const { data: shiftData, error: shiftError } = await supabase
+  .from('shifts')
+  .select('id, date, period, doctor_user_id, users(full_name)')
+  .eq('hospital_id', hospitalId)
+  .gte('date', startDate)
+  .lt('date', endDate)
+  .in('period', ['manha', 'tarde', 'noite'])
+  .not('doctor_user_id', 'is', null)
+  .order('date', { ascending: true });
+
+if (shiftError) {
+  return NextResponse.json(
+    { error: 'Falha ao carregar detalhamento dos plantões', detail: shiftError.message },
+    { status: 500 }
+  );
+}
+
+const detailsByDoctor = new Map<string, ShiftDetailByPeriod>();
+
+for (const rawShift of (shiftData ?? []) as any[]) {
+  const shift = {
+    ...rawShift,
+    users: Array.isArray(rawShift.users) ? rawShift.users[0] : rawShift.users,
+  } as ShiftDetailRow;
+
+  if (!isAllowedPeriod(shift.period)) continue;
+
+  const doctorName = shift.users?.full_name ?? 'Sem nome';
+
+  if (!detailsByDoctor.has(doctorName)) {
+    detailsByDoctor.set(doctorName, emptyShiftDetail());
+  }
+
+  detailsByDoctor.get(doctorName)![shift.period].push(dayOnly(shift.date));
+}
+
+for (const detail of detailsByDoctor.values()) {
+  detail.manha.sort();
+  detail.tarde.sort();
+  detail.noite.sort();
+}
+
     // 2) Gera PDF
     const pdfDoc = await PDFDocument.create();
 const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -155,7 +236,7 @@ const pageHeight = 595.28; // A4 points (landscape height)
       return page;
     }
 
-    function drawHeader(page: any) {
+    function drawHeader(page: any, includeTableHeader = true) {
   const yTop = pageHeight - margin;
 
   // ✅ Brand: Logo + MedTurn
@@ -221,6 +302,10 @@ page.drawText(generatedAt, {
   color: rgb(0.35, 0.35, 0.35),
 });
 
+      if (!includeTableHeader) {
+        return headerStartY - 92;
+      }
+
       // Cabeçalho da tabela
       const y = headerStartY - headerH;
 
@@ -248,71 +333,121 @@ page.drawText('Feriado (Total/Chefe)', { x: col.feriado, y, size: 9, font: fontB
     }
 
     let page = addPage();
-    let yCursor = drawHeader(page);
+let yCursor = drawHeader(page, false);
 
-    const bottomLimit = margin + 50;
+const bottomLimit = margin + 50;
 
 function fmt1(n: number | null | undefined) {
   const v = Number(n ?? 0);
   return v.toFixed(1);
 }
 
-function fmtPair(total: number | null | undefined, chief: number | null | undefined) {
-  return `${fmt1(total)} (${fmt1(chief)})`;
+function fmtPairWithChiefLabel(
+  total: number | null | undefined,
+  chief: number | null | undefined
+) {
+  return `${fmt1(total)} (${fmt1(chief)} CH)`;
 }
 
-    for (const r of rows) {
-      if (yCursor < bottomLimit) {
-        page = addPage();
-        yCursor = drawHeader(page);
-      }
 
-      page.drawText(cropText(r.medico ?? 'Sem nome', 34), {
-        x: col.medico,
+    // 3) Detalhamento dos plantões por médico
+    if (detailsByDoctor.size > 0) {
+
+      page.drawText('Detalhamento dos plantões', {
+        x: margin,
         y: yCursor,
-        size: 9,
-        font,
-        color: rgb(0.1, 0.1, 0.1),
+        size: 12,
+        font: fontBold,
+        color: rgb(0, 0, 0),
       });
 
-      const semanaTxt = fmtPair(r.semana_unidades, r.semana_chefe_unidades);
-const fdsTxt = fmtPair(r.fds_unidades, r.fds_chefe_unidades);
-const feriadoTxt = fmtPair(r.feriado_unidades, r.feriado_chefe_unidades);
-const totalTxt = fmt1(r.total_unidades);
+      yCursor -= 22;
 
-page.drawText(semanaTxt, {
-  x: col.semana,
-  y: yCursor,
-  size: 9,
-  font,
-  color: rgb(0.2, 0.2, 0.2),
-});
+      const detailPeriods: PeriodKey[] = ['manha', 'tarde', 'noite'];
+const reportByDoctor = new Map(
+  rows.map((r) => [r.medico ?? 'Sem nome', r])
+);
 
-page.drawText(fdsTxt, {
-  x: col.fds,
-  y: yCursor,
-  size: 9,
-  font,
-  color: rgb(0.2, 0.2, 0.2),
-});
+const rowDoctorNames = rows.map((r) => r.medico ?? 'Sem nome');
+const extraDoctorNames = Array.from(detailsByDoctor.keys()).filter(
+  (name) => !rowDoctorNames.includes(name)
+);
 
-page.drawText(feriadoTxt, {
-  x: col.feriado,
-  y: yCursor,
-  size: 9,
-  font,
-  color: rgb(0.2, 0.2, 0.2),
-});
+      const orderedDoctorNames = [...rowDoctorNames, ...extraDoctorNames].filter(
+        (name, index, arr) => arr.indexOf(name) === index
+      );
 
-page.drawText(totalTxt, {
-  x: col.total,
+      for (const doctorName of orderedDoctorNames) {
+        const detail = detailsByDoctor.get(doctorName);
+        if (!detail) continue;
+
+        const hasAnyShift = detailPeriods.some((period) => detail[period].length > 0);
+        if (!hasAnyShift) continue;
+
+        if (yCursor < bottomLimit + 76) {
+          page = addPage();
+          yCursor = drawHeader(page, false);
+        }
+
+        page.drawText(cropText(`${doctorName} - ${serverHospitalName}`, 90), {
+  x: margin,
   y: yCursor,
   size: 9,
   font: fontBold,
-  color: rgb(0, 0, 0),
+  color: rgb(0.06, 0.09, 0.16),
 });
 
-      yCursor -= rowH;
+yCursor -= 13;
+
+const summary = reportByDoctor.get(doctorName);
+
+if (summary) {
+const summaryLine =
+  `Semana: ${fmtPairWithChiefLabel(summary.semana_unidades, summary.semana_chefe_unidades)} • ` +
+  `FDS: ${fmtPairWithChiefLabel(summary.fds_unidades, summary.fds_chefe_unidades)} • ` +
+  `Feriado: ${fmtPairWithChiefLabel(summary.feriado_unidades, summary.feriado_chefe_unidades)} • ` +
+  `Total: ${fmt1(summary.total_unidades)}`;
+
+  page.drawText(cropText(summaryLine, 125), {
+    x: margin + 12,
+    y: yCursor,
+    size: 8,
+    font,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+
+  yCursor -= 12;
+}
+
+page.drawText('Detalhamento:', {
+          x: margin + 12,
+          y: yCursor,
+          size: 8,
+          font: fontBold,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+
+        yCursor -= 11;
+
+        for (const period of detailPeriods) {
+          const days = detail[period];
+          if (days.length === 0) continue;
+
+          const line = `${periodDetailLabel(period)}: ${days.join(', ')}`;
+
+          page.drawText(cropText(line, 120), {
+            x: margin + 12,
+            y: yCursor,
+            size: 8,
+            font,
+            color: rgb(0.25, 0.25, 0.25),
+          });
+
+          yCursor -= 11;
+        }
+
+        yCursor -= 8;
+      }
     }
 
     // rodapé (última página)

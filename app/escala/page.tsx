@@ -4,14 +4,22 @@ import { useRouter, useSearchParams } from 'next/navigation'; // Adicionado useS
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';      // Adicionado Suspense
 import { supabase } from '@/lib/supabaseClient';
 
+type PeriodKey = 'manha' | 'tarde' | 'noite';
+
+type LegacyPeriodKey = PeriodKey | '24h';
+
 type ShiftRow = {
   id: number;
   date: string;
-  period: 'manha' | 'tarde' | 'noite' | '24h';
+  period: LegacyPeriodKey;
   is_chief: boolean;
-  badge: string | null; // PATCH
+  badge: string | null;
   users: { full_name: string | null } | null;
 };
+
+function isAllowedPeriod(period: string | null): period is PeriodKey {
+  return period === 'manha' || period === 'tarde' || period === 'noite';
+}
 
 type HospitalShortcut = {
   id: string;
@@ -52,15 +60,14 @@ function sortShiftRows(a: ShiftRow, b: ShiftRow) {
 
 // Config de capacidade por período
 const PERIOD_CONFIG: {
-  key: 'manha' | 'tarde' | 'noite' | '24h';
+  key: PeriodKey;
   label: string;
   short: string;
   maxDoctors: number;
 }[] = [
-  { key: 'manha', label: 'MANHÃ', short: 'M', maxDoctors: 6 },
-  { key: 'tarde', label: 'TARDE', short: 'T', maxDoctors: 6 },
-  { key: 'noite', label: 'NOITE', short: 'N', maxDoctors: 3 },
-  { key: '24h', label: '24H', short: '24H', maxDoctors: 6 },
+  { key: 'manha', label: 'MANHÃ', short: 'M', maxDoctors: 8 },
+  { key: 'tarde', label: 'TARDE', short: 'T', maxDoctors: 8 },
+  { key: 'noite', label: 'NOITE', short: 'N', maxDoctors: 4 },
 ];
 
 // 1. Removemos o "export default" e mudamos o nome para Content
@@ -184,12 +191,11 @@ const shiftsRequestIdRef = useRef(0);
   };
 
   // Estilos dos cabeçalhos dos grupos
-  const groupStyles: Record<string, string> = {
-    manha: 'bg-green-100 text-green-800 border-green-200',
-    tarde: 'bg-blue-100 text-blue-800 border-blue-200',
-    noite: 'bg-purple-100 text-purple-800 border-purple-200',
-    '24h': 'bg-orange-100 text-orange-800 border-orange-200',
-  };
+  const groupStyles: Record<PeriodKey, string> = {
+  manha: 'bg-green-100 text-green-800 border-green-200',
+  tarde: 'bg-blue-100 text-blue-800 border-blue-200',
+  noite: 'bg-purple-100 text-purple-800 border-purple-200',
+};
 
   const monthName = useMemo(() => {
   return new Date(year, month).toLocaleDateString('pt-BR', {
@@ -262,7 +268,11 @@ const shiftsRequestIdRef = useRef(0);
       users: Array.isArray(shift.users) ? shift.users[0] : shift.users,
     }));
 
-    setShifts(formattedShifts as ShiftRow[]);
+    setShifts(
+  (formattedShifts as ShiftRow[]).filter((shift) =>
+    isAllowedPeriod(shift.period)
+  )
+);
   } catch (e) {
     if (requestId === shiftsRequestIdRef.current) {
       console.error('Erro inesperado ao carregar escala:', e);
@@ -477,25 +487,25 @@ const shiftsByDate = useMemo(() => {
   const map = new Map<
     string,
     {
-      counts: Record<'manha' | 'tarde' | 'noite' | '24h', number>;
-      byPeriod: Record<'manha' | 'tarde' | 'noite' | '24h', ShiftRow[]>;
+      counts: Record<PeriodKey, number>;
+      byPeriod: Record<PeriodKey, ShiftRow[]>;
     }
   >();
 
   for (const shift of shifts) {
+    if (!isAllowedPeriod(shift.period)) continue;
+
     if (!map.has(shift.date)) {
       map.set(shift.date, {
         counts: {
           manha: 0,
           tarde: 0,
           noite: 0,
-          '24h': 0,
         },
         byPeriod: {
           manha: [],
           tarde: [],
           noite: [],
-          '24h': [],
         },
       });
     }
@@ -515,10 +525,7 @@ const shiftsByDate = useMemo(() => {
   return map;
 }, [shifts]);
 
-  function periodCountBadge(
-    period: 'manha' | 'tarde' | 'noite' | '24h',
-    count: number
-  ) {
+  function periodCountBadge(period: PeriodKey, count: number) {
     const cfg = PERIOD_CONFIG.find((p) => p.key === period);
     if (!cfg) return null;
 
@@ -606,13 +613,13 @@ const shiftsByDate = useMemo(() => {
       const rowsToInsert: {
         hospital_id: string;
         date: string;
-        period: string;
+        period: PeriodKey;
         doctor_user_id: string;
         is_chief: boolean;
       }[] = [];
 
       for (const row of sourceRows) {
-        if (!row.period || !row.doctor_user_id) continue;
+  if (!isAllowedPeriod(row.period) || !row.doctor_user_id) continue;
 
         const day = parseInt(row.date.slice(8, 10), 10);
         if (Number.isNaN(day)) continue;
@@ -938,18 +945,16 @@ onClick={() => {
 
                 const dayData = iso ? shiftsByDate.get(iso) : null;
 
-const counts = dayData?.counts ?? {
+const counts: Record<PeriodKey, number> = dayData?.counts ?? {
   manha: 0,
   tarde: 0,
   noite: 0,
-  '24h': 0,
 };
 
-const shiftsByPeriod = dayData?.byPeriod ?? {
+const shiftsByPeriod: Record<PeriodKey, ShiftRow[]> = dayData?.byPeriod ?? {
   manha: [],
   tarde: [],
   noite: [],
-  '24h': [],
 };
                 return (
                   <div
