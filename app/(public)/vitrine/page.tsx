@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Repeat,
   ShieldCheck,
-  UserCheck,
   Calculator,
   Smartphone,
   Clock3,
@@ -21,10 +20,8 @@ import {
   ClipboardList,
   MessageSquareText,
   RefreshCw,
-  Activity,
   MapPin,
   MonitorSmartphone,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -318,7 +315,7 @@ function DashboardMock() {
                   {
                     eyebrow: "Financeiro",
                     title: "Relatório",
-                    desc: "Produção organizada.",
+                    desc: "Conferência mensal.",
                     tag: "Abrir",
                     tone: "default",
                     icon: Calculator,
@@ -565,7 +562,7 @@ function DashboardMock() {
               </p>
 
               <h3 className="mt-1 text-base font-black tracking-tight text-[#10201E]">
-                Pendências em outros hospitais
+                Pendências em outras unidades
               </h3>
 
               <p className="mt-1.5 text-[10px] leading-relaxed text-[#5F706D]">
@@ -760,15 +757,14 @@ export default function MedTurnVitrine() {
   O sistema operacional da coordenação médica.
   <br />
   <span className="bg-gradient-to-r from-[#0F766E] to-[#14B8A6] bg-clip-text text-transparent">
-    Da escala ao fechamento do mês.
+    Da escala médica ao fechamento do mês.
   </span>
 </h1>
 
 <p className="mx-auto mt-8 max-w-3xl text-base leading-7 text-[#5F706D] md:text-xl md:leading-8">
-  O MedTurn centraliza escala, trocas, disponibilidades, avisos,
-  conflitos, pendências e relatórios de produção em um fluxo único,
-  claro e acompanhável para coordenações médicas — antes que a escala
-  vire problema.
+  Centralize escala, trocas, disponibilidade, avisos e fechamento mensal em
+  um fluxo único para a coordenação médica — com o plantonista conectado pelo
+  app iOS ou pelo navegador.
 </p>
 
             <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row sm:flex-wrap">
@@ -781,17 +777,17 @@ export default function MedTurnVitrine() {
               </Link>
 
               <Link
-                href="#precos"
+                href="#operacao"
                 className="inline-flex h-16 items-center justify-center gap-2 rounded-2xl border border-[#D7E8E3] bg-white px-8 text-base font-bold text-[#10201E] shadow-sm transition-all hover:border-[#0F766E]/30 hover:bg-[#EEF8F5]"
               >
-                Ver planos <ArrowRight size={16} />
+                Ver como funciona <ArrowRight size={16} />
               </Link>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 "Trocas com aprovação da coordenação",
-                "Pendências visíveis por hospital",
+                "Pendências visíveis para a coordenação",
                 "Conflitos identificados com antecedência",
                 "Fechamento mensal mais organizado",
               ].map((item) => (
@@ -867,7 +863,7 @@ export default function MedTurnVitrine() {
   <StatCard
     value="Mais clareza"
     label="para fechar o mês"
-    sub="A produção e os plantões chegam mais organizados para conferência final."
+    sub="Plantões, trocas e movimentações chegam mais organizados para conferência final."
   />
 </div>
         </div>
@@ -884,9 +880,8 @@ export default function MedTurnVitrine() {
 </h2>
 
 <p className="mx-auto mt-5 max-w-3xl text-center text-base font-semibold leading-7 text-[#5F706D]">
-  O MedTurn já apoia coordenações em serviços hospitalares reais, ajudando na
-  organização da escala, nas trocas de plantão, no acompanhamento de pendências
-  e no fechamento mensal.
+  O MedTurn já apoia serviços hospitalares na organização de escalas, trocas de
+  plantão, disponibilidade médica, pendências da coordenação e fechamento mensal.
 </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -919,9 +914,25 @@ export default function MedTurnVitrine() {
   width={285}
   height={98}
   sizes="(max-width: 768px) 230px, 285px"
-  className="h-auto max-h-[88px] w-auto object-contain"
+              className="h-auto max-h-[88px] w-auto object-contain"
 />
             </div>
+          </div>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/solicitar-implantacao"
+              className="inline-flex h-12 items-center justify-center rounded-2xl bg-[#0F766E] px-6 text-sm font-black text-white transition-all hover:bg-[#0B4F4A]"
+            >
+              Solicitar proposta para meu serviço
+              <ArrowRight className="ml-2" size={16} />
+            </Link>
+            <Link
+              href="#problema"
+              className="inline-flex h-12 items-center justify-center rounded-2xl border border-[#D7E8E3] bg-white px-6 text-sm font-bold text-[#10201E] transition-all hover:border-[#0F766E]/30 hover:bg-[#EEF8F5]"
+            >
+              Entender a dor que resolvemos
+            </Link>
           </div>
         </div>
       </section>
@@ -936,7 +947,7 @@ export default function MedTurnVitrine() {
               <SectionHeading
                 eyebrow="O problema"
                 title="A escala não quebra só quando falta médico. Ela quebra quando a informação se perde."
-                desc="Pedido de troca no WhatsApp, disponibilidade perdida em mensagem, PDF desatualizado, médico em dois lugares, produção sendo conferida no fim do mês. O peso cai na coordenação."
+                desc="Pedido de troca no WhatsApp, disponibilidade perdida em mensagem, PDF desatualizado, médico em dois lugares e fechamento sendo conferido no fim do mês. O peso cai na coordenação."
               />
             </div>
 
@@ -981,7 +992,7 @@ export default function MedTurnVitrine() {
           <SectionHeading
             eyebrow="A solução"
             title="Um sistema para conectar escala, equipe médica e coordenação."
-            desc="O MedTurn transforma a escala em uma operação acompanhável: com fluxo de aprovação, central de pendências, avisos oficiais, multihospital, conflitos e relatórios de apoio."
+            desc="O MedTurn transforma a escala em uma operação acompanhável: com fluxo de aprovação, central de pendências, avisos oficiais, visão por unidade, conflitos e relatórios de apoio."
           />
 
           <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
@@ -1002,8 +1013,8 @@ export default function MedTurnVitrine() {
             />
             <FeatureCard
               icon={Calculator}
-              title="Relatório de produção e pagamento"
-              desc="Plantões, turnos, chefias e regras de produção ficam organizados para apoiar a conferência e o fechamento financeiro."
+              title="Relatórios de apoio ao fechamento"
+              desc="Plantões, turnos, chefias e dados operacionais ficam organizados para apoiar a conferência do mês."
             />
           </div>
 
@@ -1011,7 +1022,7 @@ export default function MedTurnVitrine() {
             <FeatureCard
               icon={ClipboardList}
               title="Histórico de trocas"
-              desc="Consulta de trocas realizadas, pendentes e não realizadas por mês para melhorar rastreabilidade operacional."
+              desc="Consulta de trocas pendentes, aceitas, canceladas e concluídas para melhorar rastreabilidade operacional."
             />
             <FeatureCard
               icon={ShieldCheck}
@@ -1023,11 +1034,28 @@ export default function MedTurnVitrine() {
               title="Mensagem do plantão"
               desc="Geração automática do texto diário com plantonistas separados por turno, pronto para copiar e revisar."
             />
-<FeatureCard
-  icon={MapPin}
-  title="Confirmação auxiliar"
-  desc="Quando habilitada pela unidade, permite registro declaratório de chegada ou assunção de plantão como apoio operacional."
-/>
+            <FeatureCard
+              icon={MapPin}
+              title="Confirmação auxiliar"
+              desc="Quando habilitada pela unidade, permite registro declaratório de chegada ou assunção de plantão como apoio operacional."
+            />
+          </div>
+
+          <div className="mt-12 rounded-[32px] border border-[#0F766E]/15 bg-white p-6 text-center shadow-[0_18px_50px_-40px_rgba(15,118,110,0.35)]">
+            <p className="mx-auto max-w-2xl text-lg font-bold text-[#10201E]">
+              Quer ver como esse fluxo encaixa na rotina do seu serviço?
+            </p>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-[#5F706D]">
+              A implantação começa pelo mapeamento da escala, das unidades e
+              das regras que a coordenação já usa hoje.
+            </p>
+            <Link
+              href="/solicitar-implantacao"
+              className="mt-5 inline-flex h-12 items-center justify-center rounded-2xl bg-[#0F766E] px-6 text-sm font-black text-white transition-all hover:bg-[#0B4F4A]"
+            >
+              Quero organizar minha escala com o MedTurn
+              <ArrowRight className="ml-2" size={16} />
+            </Link>
           </div>
         </div>
       </section>
@@ -1069,90 +1097,13 @@ export default function MedTurnVitrine() {
               desc="O dashboard destaca o que exige ação: conflito detectado, troca aguardando confirmação ou operação sem pendências críticas."
             />
             <ResultItem
-              title="Multihospital"
-              desc="Coordenadores com acesso a mais de um hospital visualizam pendências relevantes de outras unidades."
+              title="Visão multiunidade"
+              desc="Coordenadores com acesso a mais de uma unidade visualizam pendências relevantes de outros serviços."
             />
             <ResultItem
               title="Comunicação mais segura"
               desc="A mensagem diária e os avisos reduzem risco de nomes digitados errados e comunicações desencontradas."
             />
-          </div>
-        </div>
-      </section>
-
-      <section className="border-y border-[#D7E8E3] bg-white px-6 py-16 md:py-24">
-        <div className="mx-auto max-w-6xl">
-          <div className="grid gap-16 lg:grid-cols-[1fr_2fr] lg:items-start">
-            <div className="self-start lg:sticky lg:top-28">
-              <Pill>Impacto operacional</Pill>
-              <h2 className="mt-5 max-w-2xl text-[2rem] font-black leading-[1.12] tracking-tight text-[#10201E] sm:text-4xl md:text-5xl md:leading-tight">
-  O ganho não é só colocar a escala online.
-  <br />
-  É dar previsibilidade à coordenação.
-</h2>
-              <p className="mt-5 max-w-xl text-base leading-7 text-[#5F706D] md:text-lg md:leading-relaxed">
-  Quando o fluxo passa a ter dono, tela, status e histórico, a
-  escala deixa de depender de memória, print e conferência
-  manual.
-</p>
-
-              <div className="mt-10 rounded-3xl border border-[#0F766E]/20 bg-[#E0FDF8] p-6">
-                <p className="text-sm font-bold text-[#0F766E]">
-                  Resultado esperado na rotina:
-                </p>
-                <p className="mt-2 font-medium text-[#10201E]">
-                  Mais clareza para coordenar, mais previsibilidade para fechar
-                  e menos ruído para a equipe médica.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-x-12 gap-y-10 sm:grid-cols-2">
-              {[
-                {
-                  t: "Menos dependência de WhatsApp",
-                  d: "Trocas, avisos e disponibilidades ganham fluxo próprio, reduzindo perda de informação.",
-                  icon: MessageSquareText,
-                },
-                {
-                  t: "Aprovação com contexto",
-                  d: "A coordenação vê quem pediu, quem aceitou, qual plantão está envolvido e o que precisa decidir.",
-                  icon: UserCheck,
-                },
-                {
-                  t: "Fechamento mais leve",
-                  d: "Os dados de plantões e produção ficam mais organizados ao longo do mês.",
-                  icon: Calculator,
-                },
-                {
-                  t: "Equipe mais informada",
-                  d: "Médicos consultam a própria rotina e recebem notificações sobre mudanças e oportunidades.",
-                  icon: Smartphone,
-                },
-                {
-                  t: "Rastreabilidade operacional",
-                  d: "Históricos, logs e status ajudam a entender o que aconteceu sem depender de versões soltas.",
-                  icon: Activity,
-                },
-                {
-                  t: "Mais segurança na escala",
-                  d: "O verificador de conflitos ajuda a apontar possíveis sobreposições antes que virem problema.",
-                  icon: ShieldCheck,
-                },
-              ].map((item, index) => (
-                <div key={index} className="group">
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#E0FDF8] text-[#0F766E] transition-colors group-hover:bg-[#0F766E] group-hover:text-white">
-                    <item.icon size={24} />
-                  </div>
-                  <h4 className="text-xl font-bold text-[#10201E]">
-                    {item.t}
-                  </h4>
-                  <p className="mt-3 text-sm leading-6 text-[#5F706D]">
-                    {item.d}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
@@ -1165,7 +1116,7 @@ export default function MedTurnVitrine() {
           <SectionHeading
             eyebrow="Ecossistema completo"
             title="Duas experiências conectadas: coordenação e plantonista."
-            desc="A coordenação trabalha pelo painel web administrativo. O médico acompanha a rotina pelo app iOS ou acessa a própria conta pelo navegador, com uma experiência simples e adaptada ao celular."
+            desc="A coordenação trabalha pelo painel web administrativo. O médico acompanha a rotina pelo app iOS ou acessa a própria conta pelo navegador, em uma experiência simples e adaptada ao celular."
             center
           />
 
@@ -1187,15 +1138,15 @@ export default function MedTurnVitrine() {
                 {[
                   {
                     t: "Ações rápidas",
-                    d: "Escala mensal, mensagem do plantão, relatório, histórico, médicos e conflitos.",
+                    d: "Escala mensal, mensagem do plantão, relatórios, histórico, médicos e conflitos.",
                   },
                   {
                     t: "Central de pendências",
                     d: "Trocas e disponibilidades recentes organizadas por prioridade.",
                   },
                   {
-                    t: "Gestão multi-hospital",
-                    d: "Pendências de outros hospitais visíveis para quem coordena múltiplas unidades.",
+                    t: "Gestão multiunidade",
+                    d: "Pendências de outras unidades visíveis para quem coordena múltiplos serviços.",
                   },
                   {
                     t: "Avisos administrativos",
@@ -1302,7 +1253,7 @@ decisão da contratante.
             <StepCard
               number="1"
               title="Mapeamento da rotina atual"
-              desc="Entendimento do fluxo de escala, trocas, unidades, comunicação, produção e papel da coordenação."
+              desc="Entendimento do fluxo de escala, trocas, unidades, comunicação, fechamento e papel da coordenação."
             />
             <StepCard
               number="2"
@@ -1357,29 +1308,43 @@ decisão da contratante.
               </div>
             </div>
           </div>
+
+          <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] p-6 text-center md:flex-row md:text-left">
+            <div>
+              <p className="text-lg font-black text-[#10201E]">
+                Quer avaliar a implantação no seu serviço?
+              </p>
+              <p className="mt-1 text-sm text-[#5F706D]">
+                A proposta considera tamanho da equipe, unidades e rotina atual
+                da coordenação.
+              </p>
+            </div>
+            <Link
+              href="/solicitar-implantacao"
+              className="inline-flex h-12 shrink-0 items-center justify-center rounded-2xl bg-[#0F766E] px-6 text-sm font-black text-white transition-all hover:bg-[#0B4F4A]"
+            >
+              Solicitar proposta
+              <ArrowRight className="ml-2" size={16} />
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section className="border-y border-[#D7E8E3] bg-[#F6FBF9] px-6 py-24">
+      <section className="border-y border-[#D7E8E3] bg-[#F6FBF9] px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <SectionHeading
             eyebrow="Custo invisível"
             title="A escala manual custa mais do que parece."
-            desc="Antes de aparecer no financeiro, o custo da escala desorganizada aparece em desgaste operacional, mensagens perdidas, decisões sem rastreio e fechamento conferido manualmente."
+            desc="Quando a escala depende de prints, planilhas e mensagens soltas, a coordenação paga o preço ao longo do mês: mais conferência manual, trocas sem histórico claro e conflitos percebidos tarde demais."
             center
           />
 
-          <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {[
               {
                 title: "Tempo da coordenação consumido",
                 desc: "Horas gastas conferindo planilhas, prints, mensagens e versões diferentes da escala.",
                 icon: Clock3,
-              },
-              {
-                title: "Erros de comunicação",
-                desc: "Trocas, avisos e disponibilidades podem se perder quando tudo depende de conversas espalhadas.",
-                icon: MessageSquareText,
               },
               {
                 title: "Trocas fora do fluxo",
@@ -1392,14 +1357,9 @@ decisão da contratante.
                 icon: AlertCircle,
               },
               {
-                title: "Fechamento conferido manualmente",
+                title: "Fechamento manual",
                 desc: "Quando o mês não é organizado durante a rotina, a conferência final fica mais lenta e sujeita a erro.",
                 icon: Calculator,
-              },
-              {
-                title: "Desgaste da equipe",
-                desc: "Quanto mais ruído na escala, maior o desgaste entre coordenação, plantonistas e gestão.",
-                icon: Users,
               },
             ].map((item) => (
               <div
@@ -1419,14 +1379,6 @@ decisão da contratante.
                 </p>
               </div>
             ))}
-          </div>
-
-          <div className="mt-10 rounded-[32px] border border-[#0F766E]/15 bg-[#E0FDF8] p-8 text-center">
-            <p className="mx-auto max-w-3xl text-lg font-semibold leading-8 text-[#10201E]">
-              O MedTurn ajuda a transformar esse custo invisível em uma
-              operação acompanhável, com mais clareza para decidir, aprovar,
-              comunicar e fechar o mês.
-            </p>
           </div>
         </div>
       </section>
@@ -1454,113 +1406,117 @@ decisão da contratante.
 
           <div className="mt-10 grid gap-5 md:grid-cols-3">
             <PricingCard
-  tier="Essencial"
-  price="1.500,00"
-  subtitle="Para 1 unidade operacional"
-  valueLine="Para serviços que querem organizar a escala, centralizar trocas e dar mais previsibilidade à rotina da coordenação."
-  features={[
-    "1 unidade operacional",
-    "Até 100 usuários cadastrados",
-    "Escala digital centralizada",
-    "Trocas com aprovação",
-    "Disponibilidade médica",
-    "Notificações para médicos",
-    "Mensagem do plantão",
-    "Relatório de produção e pagamento",
-    "Suporte comercial padrão",
-  ]}
-/>
+              tier="Essencial"
+              price="1.500,00"
+              subtitle="Para 1 unidade operacional"
+              valueLine="Para serviços que querem organizar a escala, centralizar trocas e dar mais previsibilidade à rotina da coordenação."
+              features={[
+                "1 unidade operacional",
+                "Até 100 usuários cadastrados",
+                "Escala digital centralizada",
+                "Trocas com aprovação",
+                "Disponibilidade médica",
+                "Notificações para médicos",
+                "Mensagem do plantão",
+                "Relatórios de apoio ao fechamento",
+                "Suporte comercial padrão",
+              ]}
+            />
 
-<PricingCard
-  tier="Multiunidade"
-  price="4.000,00"
-  subtitle="Para até 3 unidades operacionais"
-  valueLine="Para grupos que precisam padronizar a operação, acompanhar pendências entre unidades e reduzir falhas de comunicação."
-  highlight
-  features={[
-    "Até 3 unidades operacionais",
-    "Até 100 usuários cadastrados por unidade",
-    "Tudo do plano Essencial",
-    "Controle centralizado por unidade operacional",
-    "Pendências multi-hospital",
-    "Verificador de conflitos",
-    "Histórico de trocas",
-    "Custo proporcional menor por unidade",
-  ]}
-/>
+            <PricingCard
+              tier="Multiunidade"
+              price="4.000,00"
+              subtitle="Para até 3 unidades operacionais"
+              valueLine="Para grupos que precisam padronizar a operação, acompanhar pendências entre unidades e reduzir falhas de comunicação."
+              highlight
+              features={[
+                "Até 3 unidades operacionais",
+                "Até 100 usuários cadastrados por unidade",
+                "Tudo do plano Essencial",
+                "Controle centralizado por unidade operacional",
+                "Pendências multiunidade",
+                "Verificador de conflitos",
+                "Histórico de trocas",
+                "Custo proporcional menor por unidade",
+              ]}
+            />
 
-<PricingCard
-  tier="Enterprise"
-  price="Sob proposta"
-  subtitle="Para grupos maiores e operações personalizadas"
-  valueLine="Para redes ou operações maiores que precisam de implantação assistida, expansão progressiva e proposta ajustada à realidade do serviço."
-features={[
-  "Mais de 3 unidades operacionais",
-  "Mais de 100 usuários por unidade",
-  "Estrutura comercial personalizada",
-  "Condições por volume",
-  "Acompanhamento institucional",
-  "Possibilidade de expansão progressiva",
-  "Modelo negociado conforme operação",
-]}
-/>
+            <PricingCard
+              tier="Enterprise"
+              price="Sob proposta"
+              subtitle="Para grupos maiores e operações personalizadas"
+              valueLine="Para redes ou operações maiores que precisam de implantação assistida, expansão progressiva e proposta ajustada à realidade do serviço."
+              features={[
+                "Mais de 3 unidades operacionais",
+                "Mais de 100 usuários por unidade",
+                "Estrutura comercial personalizada",
+                "Condições por volume",
+                "Acompanhamento institucional",
+                "Possibilidade de expansão progressiva",
+                "Modelo negociado conforme operação",
+              ]}
+            />
           </div>
 
-<p className="mt-8 text-center text-sm text-[#5F706D]">
-  Planos a partir de R$ 1.500 por unidade operacional, com até 100 usuários
-  cadastrados e condições especiais para grupos, múltiplos hospitais e
-  contratos anuais.
-</p>
+          <p className="mt-8 text-center text-sm text-[#5F706D]">
+            Planos a partir de R$ 1.500 por unidade operacional, com até 100
+            usuários cadastrados e condições especiais para grupos, múltiplas
+            unidades e contratos anuais.
+          </p>
         </div>
       </section>
 
-<section className="bg-[#F6FBF9] px-6 py-20">
-  <div className="mx-auto max-w-4xl">
-    <SectionHeading
-      eyebrow="Dúvidas comuns"
-      title="Perguntas frequentes antes da implantação."
-      desc="Alguns pontos importantes para entender como o MedTurn entra na rotina do serviço."
-      center
-    />
+      <section className="bg-[#F6FBF9] px-6 py-20">
+        <div className="mx-auto max-w-4xl">
+          <SectionHeading
+            eyebrow="Dúvidas comuns"
+            title="Perguntas frequentes antes da implantação."
+            desc="Alguns pontos importantes para entender como o MedTurn entra na rotina do serviço."
+            center
+          />
 
-    <div className="mt-10 space-y-4">
-      {[
-        {
-          q: "O MedTurn funciona para médicos que não usam iPhone?",
-          a: "Sim. O médico pode acompanhar a rotina pelo app iOS ou acessar a própria conta pelo navegador, em celular, tablet ou computador.",
-        },
-        {
-          q: "O painel da coordenação é pelo navegador?",
-          a: "Sim. A coordenação utiliza um painel web administrativo para acompanhar escala, trocas, pendências, conflitos, avisos e relatórios.",
-        },
-        {
-          q: "O valor é por hospital?",
-          a: "O valor é organizado por unidade operacional. Para grupos com mais de uma unidade, o plano Multiunidade oferece uma condição proporcional melhor.",
-        },
-{
-  q: "O que é uma unidade operacional?",
-  a: "Unidade operacional é cada serviço, hospital, setor ou frente de escala que funciona com rotina própria de plantões, equipe, coordenação e fechamento. Por exemplo: uma UTI, um pronto-socorro, um serviço de cirurgia, uma equipe de anestesia, que podem funcionar dentro de uma unidade hospitalar ou clínica.",
-},
-        {
-          q: "A implantação tem acompanhamento?",
-          a: "Sim. A implantação inclui mapeamento da rotina, configuração inicial do ambiente e orientação para coordenação e equipe médica.",
-        },
-        {
-          q: "A confirmação de presença substitui ponto eletrônico?",
-          a: "Não. Quando habilitada pela unidade contratante, a confirmação auxiliar é apenas um recurso operacional e declaratório de apoio à gestão.",
-        },
-      ].map((item) => (
-        <div
-          key={item.q}
-          className="rounded-[28px] border border-[#D7E8E3] bg-white p-6 shadow-[0_18px_50px_-40px_rgba(15,118,110,0.25)]"
-        >
-          <h3 className="text-lg font-black text-[#10201E]">{item.q}</h3>
-          <p className="mt-3 text-sm leading-7 text-[#5F706D]">{item.a}</p>
+          <div className="mt-10 space-y-4">
+            {[
+              {
+                q: "O MedTurn funciona para médicos que não usam iPhone?",
+                a: "Sim. O médico pode acompanhar a rotina pelo app iOS ou acessar a própria conta pelo navegador, em celular, tablet ou computador.",
+              },
+              {
+                q: "O painel da coordenação é pelo navegador?",
+                a: "Sim. A coordenação utiliza um painel web administrativo para acompanhar escala, trocas, pendências, conflitos, avisos e relatórios.",
+              },
+              {
+                q: "O valor é por hospital?",
+                a: "O valor é organizado por unidade operacional. Para grupos com mais de uma unidade, o plano Multiunidade oferece uma condição proporcional melhor.",
+              },
+              {
+                q: "O que é uma unidade operacional?",
+                a: "Unidade operacional é cada serviço, hospital, setor ou frente de escala que funciona com rotina própria de plantões, equipe, coordenação e fechamento. Por exemplo: uma UTI, um pronto-socorro, um serviço de cirurgia ou uma equipe de anestesia.",
+              },
+              {
+                q: "A implantação tem acompanhamento?",
+                a: "Sim. A implantação inclui mapeamento da rotina, configuração inicial do ambiente e orientação para coordenação e equipe médica.",
+              },
+              {
+                q: "A confirmação de presença substitui ponto eletrônico?",
+                a: "Não. Quando habilitada pela unidade contratante, a confirmação auxiliar é apenas um recurso operacional e declaratório de apoio à gestão.",
+              },
+            ].map((item) => (
+              <div
+                key={item.q}
+                className="rounded-[28px] border border-[#D7E8E3] bg-white p-6 shadow-[0_18px_50px_-40px_rgba(15,118,110,0.25)]"
+              >
+                <h3 className="text-lg font-black text-[#10201E]">
+                  {item.q}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-[#5F706D]">
+                  {item.a}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
-    </div>
-  </div>
-</section>
+      </section>
 
       <section className="relative overflow-hidden px-6 py-16">
         <div className="absolute inset-0 -z-10 bg-[#EEF8F5]" />
@@ -1575,9 +1531,9 @@ features={[
             </h2>
 
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#D9FFF7]">
-             O MedTurn ajuda hospitais e coordenações a organizar a escala,
-validar trocas, acompanhar pendências e conduzir o mês com mais
-clareza operacional.
+              O MedTurn ajuda hospitais e coordenações a organizar a escala,
+              validar trocas, acompanhar pendências e conduzir o mês com mais
+              clareza operacional.
             </p>
 
             <div className="mt-10 flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
