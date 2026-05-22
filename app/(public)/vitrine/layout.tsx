@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import VitrineMotionProvider from "./_components/VitrineMotionProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.medturnapp.com"),
@@ -36,5 +37,5 @@ export default function VitrineLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <VitrineMotionProvider>{children}</VitrineMotionProvider>;
 }

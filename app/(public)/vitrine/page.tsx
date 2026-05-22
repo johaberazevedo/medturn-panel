@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -15,7 +15,6 @@ import {
   Calculator,
   Smartphone,
   Clock3,
-  TrendingUp,
   AlertCircle,
   ClipboardList,
   MessageSquareText,
@@ -24,6 +23,13 @@ import {
   MonitorSmartphone,
   type LucideIcon,
 } from "lucide-react";
+import {
+  gsap,
+  registerVitrineGsap,
+  useGSAP,
+} from "./_lib/gsap";
+
+registerVitrineGsap();
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
@@ -618,14 +624,27 @@ function DashboardMock() {
 
 export default function MedTurnVitrine() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const heroScope = useRef<HTMLElement>(null);
+  const painScope = useRef<HTMLElement>(null);
 
-  useEffect(() => {
-    document.body.style.overflow = isMenuOpen ? "hidden" : "unset";
+useEffect(() => {
+  const handleScroll = () => {
+    const heroBottom = heroScope.current?.offsetHeight ?? 0;
 
-    return () => {
-      document.body.style.overflow = "unset";
-    };
-  }, [isMenuOpen]);
+    setIsScrolled(window.scrollY >= heroBottom - 88);
+  };
+
+  handleScroll();
+
+  window.addEventListener("scroll", handleScroll, { passive: true });
+  window.addEventListener("resize", handleScroll);
+
+  return () => {
+    window.removeEventListener("scroll", handleScroll);
+    window.removeEventListener("resize", handleScroll);
+  };
+}, []);
 
   const navLinks = [
     { href: "#problema", label: "O problema" },
@@ -636,17 +655,132 @@ export default function MedTurnVitrine() {
     { href: "#precos", label: "Planos" },
   ];
 
+  useGSAP(
+  () => {
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    if (reduceMotion) {
+      gsap.set(
+        ".vitrine-hero-kicker, .vitrine-hero-word, .vitrine-hero-copy, .vitrine-hero-actions, .vitrine-hero-proof, .vitrine-hero-video",
+        { autoAlpha: 1, y: 0, scale: 1 }
+      );
+
+      return;
+    }
+
+    gsap.set(".vitrine-hero-video", { scale: 1.025, autoAlpha: 0.9 });
+    gsap.set(".vitrine-hero-tension", { autoAlpha: 1 });
+    gsap.set(
+      ".vitrine-hero-kicker, .vitrine-hero-word, .vitrine-hero-copy, .vitrine-hero-actions, .vitrine-hero-proof",
+      { autoAlpha: 0, y: 16 }
+    );
+
+    const timeline = gsap.timeline({
+      defaults: { ease: "power3.out" },
+      delay: 0.08,
+    });
+
+    timeline
+      .to(".vitrine-hero-video", {
+        autoAlpha: 1,
+        scale: 1,
+        duration: 0.55,
+        ease: "expo.out",
+      })
+      .to(
+        ".vitrine-hero-tension",
+        {
+          autoAlpha: 0,
+          duration: 0.25,
+          ease: "power3.out",
+        },
+        "-=0.25"
+      )
+      .to(
+        ".vitrine-hero-kicker",
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.38,
+        },
+        "-=0.05"
+      )
+      .to(
+        ".vitrine-hero-word",
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.5,
+          stagger: 0.07,
+          ease: "power3.out",
+        },
+        "-=0.02"
+      )
+      .to(
+        ".vitrine-hero-copy, .vitrine-hero-actions, .vitrine-hero-proof",
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.42,
+          stagger: 0.08,
+          ease: "power3.out",
+        },
+        "-=0.18"
+      );
+
+    return () => {
+      timeline.kill();
+    };
+  },
+  { scope: heroScope }
+);
+
+  useGSAP(
+    () => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        gsap.set(".vitrine-pain-item", { autoAlpha: 1, y: 0 });
+        return;
+      }
+
+      gsap.fromTo(
+        ".vitrine-pain-item",
+        { autoAlpha: 0, y: 14 },
+        {
+          autoAlpha: 1,
+          y: 0,
+          duration: 0.42,
+          stagger: 0.07,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: painScope.current,
+            start: "top 72%",
+            once: true,
+          },
+        }
+      );
+    },
+    { scope: painScope }
+  );
+
   return (
     <div className="min-h-screen bg-[#F6FBF9] text-[#10201E] selection:bg-[#14B8A6]/20 selection:text-[#10201E]">
-      <header
-        className={`fixed top-0 z-[100] w-full border-b border-[#D7E8E3] transition-colors duration-300 ${
-          isMenuOpen ? "bg-[#F6FBF9]" : "bg-[#F6FBF9]/85 backdrop-blur-lg"
-        }`}
-      >
+<header
+  className={`fixed top-0 z-[100] w-full border-b transition-colors duration-300 ${
+    isMenuOpen
+      ? "border-[#D7E8E3] bg-[#F6FBF9]"
+      : isScrolled
+      ? "border-[#D7E8E3]/55 bg-[#F6FBF9]/58 backdrop-blur-md"
+      : "border-white/10 bg-white/[0.03] backdrop-blur-sm"
+  }`}
+>
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
 <Link
   href="/"
-  className="flex items-center gap-3 text-[#10201E] transition-opacity hover:opacity-90"
+  className={`flex items-center gap-3 transition-opacity hover:opacity-90 ${
+    isMenuOpen || isScrolled ? "text-[#10201E]" : "text-white"
+  }`}
 >
   <Image
     src="/medturn-logo-transparent.png"
@@ -658,22 +792,41 @@ export default function MedTurnVitrine() {
   />
 
   <div className="flex flex-col leading-none">
-    <span className="text-xl font-black tracking-tighter text-[#10201E]">
-      MED<span className="text-[#0F766E]">TURN</span>
-    </span>
+<span
+  className={`text-xl font-black tracking-tighter ${
+    isMenuOpen || isScrolled ? "text-[#10201E]" : "text-white"
+  }`}
+>
+  MED
+  <span
+    className={isMenuOpen || isScrolled ? "text-[#0F766E]" : "text-[#7DE8D4]"}
+  >
+    TURN
+  </span>
+</span>
 
-    <span className="mt-1 hidden text-[10px] font-bold uppercase tracking-[0.18em] text-[#5F706D] sm:block">
-      Gestão inteligente de plantões
-    </span>
+<span
+  className={`mt-1 hidden text-[10px] font-bold uppercase tracking-[0.18em] sm:block ${
+    isMenuOpen || isScrolled ? "text-[#5F706D]" : "text-white/55"
+  }`}
+>
+  Gestão inteligente de plantões
+</span>
   </div>
 </Link>
 
-          <nav className="hidden gap-8 text-sm font-medium text-[#5F706D] md:flex">
+          <nav
+  className={`hidden gap-8 text-sm font-medium md:flex ${
+    isMenuOpen || isScrolled ? "text-[#5F706D]" : "text-white/60"
+  }`}
+>
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="transition-colors hover:text-[#10201E]"
+                className={`transition-colors ${
+  isMenuOpen || isScrolled ? "hover:text-[#10201E]" : "hover:text-white"
+}`}
               >
                 {link.label}
               </Link>
@@ -741,36 +894,62 @@ export default function MedTurnVitrine() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden px-6 pb-20 pt-40 md:pb-28 md:pt-48">
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute left-1/2 top-0 h-[620px] w-full max-w-5xl -translate-x-1/2 bg-[#CCFBF1]/70 blur-[120px]" />
-          <div className="absolute left-1/2 top-10 h-[620px] w-[620px] -translate-x-1/2 rounded-full bg-[#14B8A6]/15 blur-[120px]" />
-          <div className="absolute right-[-120px] top-16 h-[360px] w-[360px] rounded-full bg-[#0F766E]/10 blur-[120px]" />
-          <div className="absolute left-[-100px] bottom-0 h-[320px] w-[320px] rounded-full bg-[#14B8A6]/10 blur-[120px]" />
-        </div>
+<section
+  ref={heroScope}
+  className="relative flex min-h-[76svh] overflow-hidden bg-[#061312] px-6 py-12 text-white md:min-h-[74svh] md:py-16"
+>
+        <video
+  className="vitrine-hero-video absolute inset-0 h-full w-full object-cover grayscale brightness-[0.72] contrast-110"
+  autoPlay
+  loop
+  muted
+  playsInline
+  preload="metadata"
+  poster="/og-medturn-vitrine.png"
+  aria-hidden="true"
+>
+  <source src="/vitrine-hero.mp4" type="video/mp4" />
+</video>
 
-        <div className="mx-auto max-w-7xl">
-          <div className="mx-auto max-w-4xl text-center">
-            <Pill>Para coordenações médicas, hospitais e grupos de plantão</Pill>
+<div className="absolute inset-0 bg-[#0F766E]/30 mix-blend-multiply" />
+<div className="absolute inset-0 bg-[#061312]/38" />
+<div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(20,184,166,0.30),transparent_34%),linear-gradient(180deg,rgba(6,19,18,0.50)_0%,rgba(6,19,18,0.72)_46%,rgba(6,19,18,0.94)_100%)]" />
+<div className="vitrine-hero-tension pointer-events-none absolute inset-0 bg-[#061312]" />
 
-            <h1 className="mt-8 text-4xl font-black leading-[1.02] tracking-tight text-[#10201E] sm:text-5xl md:text-7xl lg:leading-[1.02]">
-  O sistema operacional da coordenação médica.
-  <br />
-  <span className="bg-gradient-to-r from-[#0F766E] to-[#14B8A6] bg-clip-text text-transparent">
-    Da escala médica ao fechamento do mês.
-  </span>
-</h1>
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col justify-center pb-6 pt-16 md:pb-4 md:pt-20">
+          <div className="max-w-6xl">
+            <p className="vitrine-hero-kicker max-w-4xl text-[10px] font-black uppercase leading-5 tracking-[0.24em] text-[#7DE8D4] md:text-xs">
+              Para coordenações médicas, hospitais e grupos de plantão
+            </p>
 
-<p className="mx-auto mt-8 max-w-3xl text-base leading-7 text-[#5F706D] md:text-xl md:leading-8">
-  Centralize escala, trocas, disponibilidade, avisos e fechamento mensal em
-  um fluxo único para a coordenação médica — com o plantonista conectado pelo
-  app iOS ou pelo navegador.
-</p>
+            <h1 className="mt-5 max-w-6xl text-[clamp(2.05rem,5.25vw,5.35rem)] font-black leading-[0.96] tracking-tight text-white">
+              <span className="block overflow-hidden pb-2">
+                <span className="vitrine-hero-word block">
+                  O sistema operacional
+                </span>
+              </span>
+              <span className="block overflow-hidden pb-2">
+                <span className="vitrine-hero-word block text-[#7DE8D4]">
+                  da coordenação médica.
+                </span>
+              </span>
+              <span className="block overflow-hidden pb-2">
+                <span className="vitrine-hero-word block">
+                  Da escala ao fechamento do mês.
+                </span>
+              </span>
+            </h1>
 
-            <div className="mt-10 flex flex-col justify-center gap-4 sm:flex-row sm:flex-wrap">
+            <p className="vitrine-hero-copy mt-5 max-w-3xl text-sm leading-7 text-white/78 md:text-base md:leading-8">
+              Centralize escala, trocas, disponibilidade, avisos e fechamento
+              mensal em um fluxo único para a coordenação médica, com o
+              plantonista conectado pelo app iOS ou pelo navegador.
+            </p>
+
+            <div className="vitrine-hero-actions mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
                 href="/solicitar-implantacao"
-                className="inline-flex h-16 items-center justify-center rounded-2xl bg-[#0F766E] px-8 text-base font-black text-white shadow-[0_18px_45px_-24px_rgba(15,118,110,0.7)] transition-all hover:scale-105 hover:bg-[#0B4F4A]"
+                className="inline-flex h-12 items-center justify-center rounded-2xl bg-[#7DE8D4] px-6 text-xs font-black uppercase tracking-[0.08em] text-[#061312] shadow-[0_24px_60px_-28px_rgba(125,232,212,0.75)] transition-colors hover:bg-white md:h-14 md:px-7"
               >
                 Solicitar proposta para meu serviço
                 <ArrowRight className="ml-2" size={18} />
@@ -778,210 +957,191 @@ export default function MedTurnVitrine() {
 
               <Link
                 href="#operacao"
-                className="inline-flex h-16 items-center justify-center gap-2 rounded-2xl border border-[#D7E8E3] bg-white px-8 text-base font-bold text-[#10201E] shadow-sm transition-all hover:border-[#0F766E]/30 hover:bg-[#EEF8F5]"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/18 bg-white/8 px-6 text-xs font-bold uppercase tracking-[0.08em] text-white backdrop-blur-md transition-colors hover:bg-white/14 md:h-14 md:px-7"
               >
                 Ver como funciona <ArrowRight size={16} />
               </Link>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                "Trocas com aprovação da coordenação",
-                "Pendências visíveis para a coordenação",
-                "Conflitos identificados com antecedência",
-                "Fechamento mensal mais organizado",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-[#D7E8E3] bg-white px-4 py-3 font-semibold text-[#10201E] shadow-sm"
-                >
-                  <CheckCircle2 size={16} className="text-[#0F766E]" />
-                  {item}
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-[28px] border border-[#0F766E]/15 bg-[#E0FDF8] p-5">
-                <p className="text-sm font-bold text-[#10201E]">
-                  Você não recebe só um sistema.
-                </p>
-
-                <p className="mt-2 text-sm leading-relaxed text-[#5F706D]">
-                  Recebe um fluxo implantado com acompanhamento, configurado
-                  conforme a rotina do serviço e com orientação inicial para
-                  coordenação e equipe médica.
-                </p>
-              </div>
-
-              <div className="rounded-[28px] border border-[#D7E8E3] bg-white p-5 shadow-sm">
-                <p className="text-sm font-bold text-[#10201E]">
-                  Criado a partir da rotina real de plantões médicos.
-                </p>
-
-                <p className="mt-2 text-sm leading-relaxed text-[#5F706D]">
-                  O MedTurn foi desenhado para problemas práticos de escala:
-                  trocas, disponibilidade, conflitos, avisos, pendências e
-                  fechamento mensal.
-                </p>
-              </div>
-            </div>
+<div className="vitrine-hero-proof mt-6 grid max-w-5xl gap-3 text-xs font-semibold text-white/78 sm:grid-cols-2 lg:grid-cols-4">
+  {[
+    "Trocas com aprovação da coordenação",
+    "Pendências visíveis para a coordenação",
+    "Conflitos identificados com antecedência",
+    "Fechamento mais organizado",
+  ].map((item) => (
+    <div
+      key={item}
+      className="flex items-center gap-2 border-t border-white/14 pt-3"
+    >
+      <CheckCircle2 size={16} className="shrink-0 text-[#7DE8D4]" />
+      {item}
+    </div>
+  ))}
+</div>
           </div>
-
-          <div className="mt-16">
-  <div className="mb-8 max-w-3xl">
-    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0F766E]">
-      Painel administrativo
-    </p>
-
-    <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-[#10201E] md:text-5xl">
-      A coordenação enxerga a operação inteira em uma única tela.
-    </h2>
-
-    <p className="mt-4 text-base leading-7 text-[#5F706D] md:text-lg">
-      Pendências, trocas aceitas, conflitos, avisos, disponibilidade médica,
-      relatórios e ações rápidas ficam organizados para tomada de decisão.
-    </p>
-  </div>
-
-  <div className="w-full">
-    <DashboardMock />
-  </div>
-</div>
-
-          <div className="mt-12 grid gap-4 md:grid-cols-3">
-  <StatCard
-    value="Menos dispersão"
-    label="na rotina da coordenação"
-    sub="Trocas, avisos, disponibilidade e pendências deixam de ficar espalhados."
-  />
-  <StatCard
-    value="Mais controle"
-    label="sobre decisões operacionais"
-    sub="A coordenação enxerga o que está pendente, aceito, aprovado ou em conflito."
-  />
-  <StatCard
-    value="Mais clareza"
-    label="para fechar o mês"
-    sub="Plantões, trocas e movimentações chegam mais organizados para conferência final."
-  />
-</div>
         </div>
       </section>
 
-      <section className="border-y border-[#D7E8E3] bg-white px-6 py-14">
-  <div className="mx-auto max-w-6xl text-center">
-<p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0F766E]">
-  Em uso real
-</p>
+      <section
+        className="border-y border-[#D7E8E3] bg-white px-6 py-12"
+      >
+        <div className="mx-auto max-w-6xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0F766E]">
+            Em uso real
+          </p>
 
-<h2 className="mt-3 text-3xl font-black tracking-tight text-[#10201E] md:text-4xl">
-  Já utilizado na gestão de escalas médicas em 3 hospitais.
-</h2>
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-[#10201E] md:text-4xl">
+            Já utilizado na gestão de escalas médicas em 3 hospitais.
+          </h2>
 
-<p className="mx-auto mt-5 max-w-3xl text-center text-base font-semibold leading-7 text-[#5F706D]">
-  O MedTurn já apoia serviços hospitalares na organização de escalas, trocas de
-  plantão, disponibilidade médica, pendências da coordenação e fechamento mensal.
-</p>
+          <p className="mx-auto mt-5 max-w-3xl text-center text-base font-semibold leading-7 text-[#5F706D]">
+            O MedTurn já apoia serviços hospitalares na organização de escalas,
+            trocas de plantão, disponibilidade médica, pendências da coordenação
+            e fechamento mensal.
+          </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="flex h-[140px] items-center justify-center rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-28px_rgba(15,118,110,0.28)]">
+            <div className="flex h-[132px] items-center justify-center rounded-[24px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-30px_rgba(15,118,110,0.24)]">
               <Image
                 src="/brand/logo-hgvc2.png"
                 alt="Hospital Geral de Vitória da Conquista"
                 width={320}
                 height={110}
                 sizes="(max-width: 768px) 260px, 320px"
-                className="h-auto max-h-[105px] w-auto object-contain"
+                className="h-auto max-h-[98px] w-auto object-contain"
               />
             </div>
 
-            <div className="flex h-[140px] items-center justify-center rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-28px_rgba(15,118,110,0.28)]">
-<Image
-  src="/brand/logo-afranio-peixoto2.png"
-  alt="Hospital Afrânio Peixoto"
-  width={546}
-  height={182}
-  sizes="(max-width: 768px) 390px, 546px"
-  className="h-auto max-h-[125px] w-auto max-w-[98%] object-contain"
-/>
+            <div className="flex h-[132px] items-center justify-center rounded-[24px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-30px_rgba(15,118,110,0.24)]">
+              <Image
+                src="/brand/logo-afranio-peixoto2.png"
+                alt="Hospital Afrânio Peixoto"
+                width={546}
+                height={182}
+                sizes="(max-width: 768px) 390px, 546px"
+                className="h-auto max-h-[118px] w-auto max-w-[98%] object-contain"
+              />
             </div>
 
-            <div className="flex h-[140px] items-center justify-center rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-28px_rgba(15,118,110,0.28)]">
-<Image
-  src="/brand/logo-esau-matos.png"
-  alt="Hospital Municipal Esaú Matos"
-  width={285}
-  height={98}
-  sizes="(max-width: 768px) 230px, 285px"
-              className="h-auto max-h-[88px] w-auto object-contain"
-/>
+            <div className="flex h-[132px] items-center justify-center rounded-[24px] border border-[#D7E8E3] bg-[#F6FBF9] px-6 shadow-[0_14px_35px_-30px_rgba(15,118,110,0.24)]">
+              <Image
+                src="/brand/logo-esau-matos.png"
+                alt="Hospital Municipal Esaú Matos"
+                width={285}
+                height={98}
+                sizes="(max-width: 768px) 230px, 285px"
+                className="h-auto max-h-[82px] w-auto object-contain"
+              />
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/solicitar-implantacao"
-              className="inline-flex h-12 items-center justify-center rounded-2xl bg-[#0F766E] px-6 text-sm font-black text-white transition-all hover:bg-[#0B4F4A]"
-            >
-              Solicitar proposta para meu serviço
-              <ArrowRight className="ml-2" size={16} />
-            </Link>
-            <Link
-              href="#problema"
-              className="inline-flex h-12 items-center justify-center rounded-2xl border border-[#D7E8E3] bg-white px-6 text-sm font-bold text-[#10201E] transition-all hover:border-[#0F766E]/30 hover:bg-[#EEF8F5]"
-            >
-              Entender a dor que resolvemos
-            </Link>
+      <section className="relative overflow-hidden bg-[#F6FBF9] px-6 py-20 md:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0F766E]">
+              Painel administrativo
+            </p>
+
+            <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-[#10201E] md:text-5xl">
+              A coordenação enxerga a operação inteira em uma única tela.
+            </h2>
+
+<p className="mt-4 text-base leading-7 text-[#5F706D] md:text-lg">
+  Pendências, trocas aceitas, conflitos, avisos, disponibilidade
+  médica, relatórios e ações rápidas ficam organizados para tomada
+  de decisão.
+</p>
+          </div>
+
+          <div className="w-full">
+            <DashboardMock />
+          </div>
+
+                   <div className="mt-12 grid gap-4 md:grid-cols-3">
+            <StatCard
+              value="Menos dispersão"
+              label="na rotina da coordenação"
+              sub="Trocas, avisos, disponibilidade e pendências deixam de ficar espalhados."
+            />
+            <StatCard
+              value="Mais controle"
+              label="sobre decisões operacionais"
+              sub="A coordenação enxerga o que está pendente, aceito, aprovado ou em conflito."
+            />
+            <StatCard
+              value="Mais clareza"
+              label="para fechar o mês"
+              sub="Plantões, trocas e movimentações chegam mais organizados para conferência final."
+            />
           </div>
         </div>
       </section>
 
       <section
         id="problema"
-        className="border-y border-[#D7E8E3] bg-white px-6 py-20 md:py-24"
+        ref={painScope}
+        className="bg-white px-6 py-16 md:py-20"
       >
         <div className="mx-auto max-w-6xl">
-          <div className="grid items-center gap-12 md:grid-cols-2">
-            <div>
-              <SectionHeading
-                eyebrow="O problema"
-                title="A escala não quebra só quando falta médico. Ela quebra quando a informação se perde."
-                desc="Pedido de troca no WhatsApp, disponibilidade perdida em mensagem, PDF desatualizado, médico em dois lugares e fechamento sendo conferido no fim do mês. O peso cai na coordenação."
-              />
+<SectionHeading
+  eyebrow="O problema"
+  title="A escala não quebra só quando falta médico. Ela quebra quando a informação se perde."
+  desc="Pedido de troca no WhatsApp, disponibilidade perdida em mensagem, PDF desatualizado, médico em dois lugares e fechamento conferido no fim do mês. Quando a informação se espalha, o peso cai na coordenação."
+  center
+/>
+
+          <div className="mt-10 grid gap-5 md:grid-cols-2">
+            <div className="vitrine-pain-item rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] p-6 shadow-[0_18px_50px_-42px_rgba(15,118,110,0.25)]">
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-[#0F766E]">
+                Coordenação
+              </p>
+              <h3 className="mt-3 text-2xl font-black text-[#10201E]">
+                Gestão operacional da escala.
+              </h3>
+              <ul className="mt-5 space-y-3 text-sm leading-6 text-[#5F706D]">
+                {[
+                  "escala mensal centralizada por unidade;",
+                  "trocas com fluxo de aprovação;",
+                  "pendências e conflitos visíveis para decisão;",
+                  "relatórios de apoio ao fechamento mensal.",
+                ].map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <AlertCircle
+                      size={17}
+                      className="mt-1 shrink-0 text-amber-600"
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <div className="space-y-5">
-              <div className="flex gap-4 rounded-2xl border border-red-200 bg-red-50 p-5">
-                <AlertCircle className="shrink-0 text-red-500" />
-                <p className="text-sm leading-relaxed text-[#5F706D]">
-                  <strong className="text-[#10201E]">
-                    Informação espalhada:
-                  </strong>{" "}
-                  alterações importantes ficam entre planilhas, mensagens, PDFs
-                  e conversas paralelas.
-                </p>
-              </div>
-
-              <div className="flex gap-4 rounded-2xl border border-orange-200 bg-orange-50 p-5">
-                <Clock3 className="shrink-0 text-orange-500" />
-                <p className="text-sm leading-relaxed text-[#5F706D]">
-                  <strong className="text-[#10201E]">Desgaste diário:</strong>{" "}
-                  a coordenação precisa reconferir nomes, datas, turnos,
-                  aceitações e pendências manualmente.
-                </p>
-              </div>
-
-              <div className="flex gap-4 rounded-2xl border border-[#0F766E]/15 bg-[#E0FDF8] p-5">
-                <TrendingUp className="shrink-0 text-[#0F766E]" />
-                <p className="text-sm leading-relaxed text-[#5F706D]">
-                  <strong className="text-[#10201E]">
-                    Falta de previsibilidade:
-                  </strong>{" "}
-                  o fechamento fica pesado porque a operação não foi organizada
-                  ao longo do mês.
-                </p>
-              </div>
+            <div className="vitrine-pain-item rounded-[28px] border border-[#D7E8E3] bg-[#F6FBF9] p-6 shadow-[0_18px_50px_-42px_rgba(15,118,110,0.25)]">
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-[#0F766E]">
+                Plantonistas
+              </p>
+              <h3 className="mt-3 text-2xl font-black text-[#10201E]">
+                Acesso simples para a equipe médica.
+              </h3>
+              <ul className="mt-5 space-y-3 text-sm leading-6 text-[#5F706D]">
+                {[
+                  "consulta da própria escala pelo celular ou navegador;",
+                  "envio de disponibilidade para a coordenação;",
+                  "participação em trocas de plantão pelo fluxo definido;",
+                  "recebimento de avisos importantes da unidade.",
+                ].map((item) => (
+                  <li key={item} className="flex gap-3">
+                    <CheckCircle2
+                      size={17}
+                      className="mt-1 shrink-0 text-[#0F766E]"
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
@@ -999,7 +1159,7 @@ export default function MedTurnVitrine() {
             <FeatureCard
               icon={CalendarDays}
               title="Escala mensal centralizada"
-              desc="A coordenação visualiza, organiza e edita plantões por hospital ou unidade, com uma referência única para a equipe."
+              desc="A coordenação mantém uma versão única da escala por unidade operacional, com acesso claro para a equipe."
             />
             <FeatureCard
               icon={Repeat}
@@ -1009,7 +1169,7 @@ export default function MedTurnVitrine() {
             <FeatureCard
               icon={BellRing}
               title="Avisos e notificações"
-              desc="A coordenação pode enviar comunicados para um médico específico ou para todos os usuários do hospital."
+              desc="A coordenação pode enviar comunicados para um médico específico ou para todos os usuários da unidade."
             />
             <FeatureCard
               icon={Calculator}
@@ -1053,7 +1213,7 @@ export default function MedTurnVitrine() {
               href="/solicitar-implantacao"
               className="mt-5 inline-flex h-12 items-center justify-center rounded-2xl bg-[#0F766E] px-6 text-sm font-black text-white transition-all hover:bg-[#0B4F4A]"
             >
-              Quero organizar minha escala com o MedTurn
+              Solicitar proposta
               <ArrowRight className="ml-2" size={16} />
             </Link>
           </div>
@@ -1065,7 +1225,7 @@ export default function MedTurnVitrine() {
           <SectionHeading
             eyebrow="Operação real"
             title="O MedTurn foi desenhado para o fluxo que a coordenação vive todos os dias."
-            desc="Não é só uma tela de escala. É uma camada operacional para acompanhar pendências, agir rápido e reduzir falhas de comunicação."
+            desc="Não é só um calendário de plantões. É uma camada operacional para acompanhar pendências, agir rápido e reduzir falhas de comunicação."
             center
           />
 
@@ -1273,16 +1433,15 @@ decisão da contratante.
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0F766E]">
                   O que isso significa na prática
                 </p>
-                <h3 className="mt-3 text-2xl font-black text-[#10201E]">
-                  Menos resistência da equipe. Mais organização para a operação
-                  andar.
-                </h3>
-                <p className="mt-4 text-sm leading-relaxed text-[#5F706D]">
-                  Quando a implantação respeita a realidade do serviço, a
-                  coordenação sente menos peso na mudança, os plantonistas
-                  entendem melhor o fluxo e a adoção acontece com mais
-                  consistência.
-                </p>
+<h3 className="mt-3 text-2xl font-black text-[#10201E]">
+  Você não recebe só um sistema. Recebe um fluxo implantado para a
+  realidade do seu serviço.
+</h3>
+<p className="mt-4 text-sm leading-relaxed text-[#5F706D]">
+  O MedTurn é configurado a partir da escala, das unidades, das
+  regras e da forma como a coordenação já trabalha. A implantação
+  ajuda a equipe a entender o fluxo e começar com mais segurança.
+</p>
               </div>
 
               <div className="space-y-4">
@@ -1388,7 +1547,7 @@ decisão da contratante.
           <SectionHeading
             eyebrow="Estrutura comercial"
             title="Uma proposta compatível com o tamanho do seu serviço."
-            desc="O MedTurn foi pensado para hospitais e grupos que querem organizar a escala, reduzir falhas de comunicação, aliviar a rotina da coordenação e ganhar previsibilidade operacional."
+            desc="O MedTurn foi pensado para hospitais e grupos que querem estruturar a gestão de escala, comunicação com a equipe médica e fechamento operacional."
             center
           />
 
@@ -1397,10 +1556,11 @@ decisão da contratante.
               Como o MedTurn se adapta à sua operação
             </p>
             <p className="mx-auto mt-3 max-w-3xl text-sm leading-7 text-[#5F706D]">
-              O valor do MedTurn acompanha o tamanho da operação. Para serviços
-              menores, uma unidade operacional pode ser suficiente. Para grupos
-              com múltiplas frentes, o plano multiunidade reduz o custo
-              proporcional e entrega mais controle para a coordenação.
+              O valor do MedTurn acompanha o tamanho da operação. Uma unidade
+              operacional é cada serviço com escala própria, como anestesia,
+              cirurgia, UTI, pronto-socorro ou uma equipe médica específica.
+              Para grupos com múltiplas frentes, o plano multiunidade reduz o
+              custo proporcional e entrega mais controle para a coordenação.
             </p>
           </div>
 
@@ -1409,7 +1569,7 @@ decisão da contratante.
               tier="Essencial"
               price="1.500,00"
               subtitle="Para 1 unidade operacional"
-              valueLine="Para serviços que querem organizar a escala, centralizar trocas e dar mais previsibilidade à rotina da coordenação."
+              valueLine="Para serviços que querem organizar a escala, centralizar trocas e apoiar a rotina da coordenação."
               features={[
                 "1 unidade operacional",
                 "Até 100 usuários cadastrados",
@@ -1519,46 +1679,44 @@ decisão da contratante.
       </section>
 
       <section className="relative overflow-hidden px-6 py-16">
-        <div className="absolute inset-0 -z-10 bg-[#EEF8F5]" />
+  <div className="absolute inset-0 -z-10 bg-[#EEF8F5]" />
 
-        <div className="mx-auto max-w-5xl">
-          <div className="relative overflow-hidden rounded-[40px] border border-[#0F766E]/20 bg-gradient-to-b from-[#0F766E] to-[#0B4F4A] p-10 text-center shadow-[0_24px_70px_-38px_rgba(15,118,110,0.55)] md:p-20">
-            <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/10 to-transparent" />
+  <div className="mx-auto max-w-5xl">
+    <div className="relative overflow-hidden rounded-[40px] border border-[#0F766E]/20 bg-gradient-to-b from-[#0F766E] to-[#0B4F4A] p-10 text-center shadow-[0_24px_70px_-38px_rgba(15,118,110,0.55)] md:p-20">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/10 to-transparent" />
 
-            <h2 className="text-3xl font-black tracking-tight text-white md:text-5xl">
-              Sua operação pode funcionar com muito mais clareza, controle e
-              previsibilidade.
-            </h2>
+      <h2 className="text-3xl font-black tracking-tight text-white md:text-5xl">
+        Dê mais previsibilidade à rotina da coordenação médica.
+      </h2>
 
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#D9FFF7]">
-              O MedTurn ajuda hospitais e coordenações a organizar a escala,
-              validar trocas, acompanhar pendências e conduzir o mês com mais
-              clareza operacional.
-            </p>
+      <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#D9FFF7]">
+        O MedTurn ajuda sua equipe a trabalhar com uma referência única,
+        acompanhar pendências em tempo real e tomar decisões com mais clareza
+        ao longo do mês.
+      </p>
 
-            <div className="mt-10 flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
-              <Link
-                href="/solicitar-implantacao"
-                className="inline-flex h-14 items-center justify-center rounded-2xl bg-white px-10 text-base font-bold text-[#0B4F4A] shadow-[0_18px_40px_-28px_rgba(255,255,255,0.8)] transition-all duration-300 hover:scale-105 hover:bg-[#E0FDF8]"
-              >
-                Solicitar proposta para meu serviço
-              </Link>
+      <div className="mt-10 flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
+        <Link
+          href="/solicitar-implantacao"
+          className="inline-flex h-14 items-center justify-center rounded-2xl bg-white px-10 text-base font-bold text-[#0B4F4A] shadow-[0_18px_40px_-28px_rgba(255,255,255,0.8)] transition-all duration-300 hover:scale-105 hover:bg-[#E0FDF8]"
+        >
+          Solicitar proposta para meu serviço
+        </Link>
 
-              <Link
-                href="#precos"
-                className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-10 text-base font-bold text-white backdrop-blur-md transition-all duration-300 hover:bg-white/15"
-              >
-                Ver planos <ArrowRight size={16} />
-              </Link>
-            </div>
+        <Link
+          href="#precos"
+          className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-10 text-base font-bold text-white backdrop-blur-md transition-all duration-300 hover:bg-white/15"
+        >
+          Ver planos <ArrowRight size={16} />
+        </Link>
+      </div>
 
-            <p className="mt-8 text-sm text-[#BFF8EA]">
-              Implantação assistida · App iOS · Acesso web pelo navegador · Painel
-              administrativo
-            </p>
-          </div>
-        </div>
-      </section>
+      <p className="mt-8 text-sm text-[#BFF8EA]">
+        Painel administrativo · App iOS · Acesso web · Implantação assistida
+      </p>
+    </div>
+  </div>
+</section>
 
       <footer className="border-t border-[#D7E8E3] bg-[#F6FBF9] px-6 py-12">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
