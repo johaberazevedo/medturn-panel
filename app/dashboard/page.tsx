@@ -2,8 +2,21 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabaseClient';
 import OneSignalInit from '../components/OneSignalInit';
+import { SupportChatErrorBoundary } from '@/app/components/support-chat/SupportChatErrorBoundary';
+
+const SupportChatWidget = dynamic(
+  () =>
+    import('@/app/components/support-chat/SupportChatWidget').then(
+      (mod) => mod.SupportChatWidget
+    ),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 type PeriodKey = 'manha' | 'tarde' | 'noite';
 type LegacyPeriodKey = PeriodKey | '24h';
@@ -1876,6 +1889,10 @@ onClick={() => {
           </div>
         </div>
       )}
+
+      <SupportChatErrorBoundary>
+        <SupportChatWidget area="admin" />
+      </SupportChatErrorBoundary>
       </div>
     </>
   );
