@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Settings, Save, ChevronLeft, Loader2, Globe,
-  Clock, CheckCircle2, RefreshCw, UserX
+  Clock, CheckCircle2, RefreshCw, UserX, FileDown, CalendarRange
 } from 'lucide-react';
 
 // --- CONFIG ---
@@ -20,8 +20,20 @@ type ShiftRow = {
 
 const PERIOD_ORDER: ShiftRow['period'][] = ['manha', 'tarde', 'noite', '24h'];
 
+const MONTH_LABELS = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+function previousMonth() {
+  const now = new Date();
+  const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return { year: previous.getFullYear(), month: previous.getMonth() + 1 };
+}
+
 export default function CheckinAdminPage() {
   const router = useRouter();
+  const initialReportPeriod = useMemo(() => previousMonth(), []);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [hospitalId, setHospitalId] = useState<string | null>(null);
@@ -31,6 +43,19 @@ export default function CheckinAdminPage() {
   const [shifts, setShifts] = useState<ShiftRow[]>([]);
   const [checkins, setCheckins] = useState<any[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [reportYear, setReportYear] = useState(initialReportPeriod.year);
+  const [reportMonth, setReportMonth] = useState(initialReportPeriod.month);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const isReportPeriodValid = Number.isInteger(reportYear) && reportYear >= 2000 && reportYear <= 2100;
+  const isReportMonthClosed = useMemo(() => {
+    if (!Number.isInteger(reportYear) || reportYear < 2000 || reportYear > 2100) return false;
+    const now = new Date();
+    const selectedMonth = new Date(reportYear, reportMonth - 1, 1);
+    const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return selectedMonth < currentMonth;
+  }, [reportYear, reportMonth]);
 
   const carregarDados = useCallback(async (hId: string, d: string) => {
   setFetching(true);
@@ -176,6 +201,61 @@ if (!isAdmin) {
     alert("Configurações aplicadas!");
   };
 
+  const gerarRelatorioCheckins = async () => {
+    if (!hospitalId || !isReportMonthClosed || generatingReport) return;
+
+    setGeneratingReport(true);
+    setReportError(null);
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (sessionError || !accessToken) {
+        setReportError('Sua sessão expirou. Entre novamente para gerar o relatório.');
+        return;
+      }
+
+      const response = await fetch('/api/report/checkin-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          hospitalId,
+          year: reportYear,
+          month: reportMonth,
+        }),
+      });
+
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}));
+        setReportError(
+          json?.detail
+            ? `${json.error} — ${json.detail}`
+            : (json?.error ?? 'Não foi possível gerar o relatório de check-ins.')
+        );
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `medturn_checkins_${reportYear}-${String(reportMonth).padStart(2, '0')}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao gerar relatório de check-ins:', error);
+      setReportError('Não foi possível gerar o relatório de check-ins.');
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black uppercase tracking-widest animate-pulse text-xs">Sincronizando Unidade...</div>;
 
   return (
@@ -223,6 +303,90 @@ if (!isAdmin) {
             </div>
           </div>
           <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none group-hover:opacity-10 transition-opacity"><Globe size={180} /></div>
+        </section>
+
+        {/* RELATÓRIO MENSAL DE CHECK-INS */}
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-emerald-600">
+                <CalendarRange size={18} />
+                <p className="text-[10px] font-black uppercase tracking-widest">Relatório mensal</p>
+              </div>
+              <h2 className="mt-2 text-xl font-black tracking-tight text-slate-900">
+                Check-ins do mês
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Gere o PDF com os plantões e plantonistas que registraram presença na competência selecionada.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div>
+                <label htmlFor="checkin-report-month" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Mês
+                </label>
+                <select
+                  id="checkin-report-month"
+                  value={reportMonth}
+                  onChange={(event) => {
+                    setReportMonth(Number(event.target.value));
+                    setReportError(null);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 sm:w-40"
+                >
+                  {MONTH_LABELS.map((label, index) => (
+                    <option key={label} value={index + 1}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="checkin-report-year" className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  Ano
+                </label>
+                <input
+                  id="checkin-report-year"
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={reportYear}
+                  onChange={(event) => {
+                    setReportYear(Number(event.target.value));
+                    setReportError(null);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 sm:w-28"
+                />
+              </div>
+
+              <button
+                onClick={gerarRelatorioCheckins}
+                disabled={!isReportMonthClosed || generatingReport}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:active:scale-100"
+              >
+                {generatingReport ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                {generatingReport ? 'Gerando...' : 'Gerar PDF'}
+              </button>
+            </div>
+          </div>
+
+          {!isReportPeriodValid && (
+            <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+              Informe um ano válido entre 2000 e 2100.
+            </p>
+          )}
+
+          {isReportPeriodValid && !isReportMonthClosed && (
+            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
+              O relatório fica disponível somente depois do encerramento do mês selecionado.
+            </p>
+          )}
+
+          {reportError && (
+            <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700" role="alert">
+              {reportError}
+            </p>
+          )}
         </section>
 
         {/* LISTAGEM AGRUPADA POR TURNOS */}

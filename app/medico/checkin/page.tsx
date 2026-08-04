@@ -12,7 +12,11 @@ type ShiftRow = {
   is_chief: boolean;
   hospitals: { 
     name: string | null;
-    is_checkin_enabled: boolean; 
+    is_checkin_enabled: boolean;
+    latitude: number | null;
+    longitude: number | null;
+    geofence_radius: number | null;
+    checkin_geofence_enforced: boolean | null;
   } | null;
 };
 
@@ -77,6 +81,101 @@ function formatTimeBR(dateStr: string) {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function hasConfiguredGeofence(hospital: ShiftRow['hospitals']) {
+  return (
+    typeof hospital?.latitude === 'number' &&
+    Number.isFinite(hospital.latitude) &&
+    typeof hospital?.longitude === 'number' &&
+    Number.isFinite(hospital.longitude)
+  );
+}
+
+function isGeofenceEnforced(hospital: ShiftRow['hospitals']) {
+  return hospital?.checkin_geofence_enforced === true;
+}
+
+function distanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusMeters = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const safeA = Math.max(0, Math.min(1, a));
+  const c = 2 * Math.atan2(Math.sqrt(safeA), Math.sqrt(1 - safeA));
+  return earthRadiusMeters * c;
+}
+
+const LOCATION_REQUIRED_MESSAGE =
+  'Para confirmar sua entrada neste hospital, é necessário permitir o acesso à localização. Atualize a página e tente novamente. Se o aviso não aparecer, toque no cadeado/ícone ao lado do endereço do site e permita a localização nas configurações do navegador.';
+
+type GeoResult =
+  | {
+      ok: true;
+      latitude: number;
+      longitude: number;
+      accuracy: number | null;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+function getGeolocationErrorCode(error: GeolocationPositionError): string {
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return 'permission_denied';
+    case error.POSITION_UNAVAILABLE:
+      return 'position_unavailable';
+    case error.TIMEOUT:
+      return 'timeout';
+    default:
+      return 'unknown_error';
+  }
+}
+
+function getCurrentPosition(): Promise<GeoResult> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      resolve({ ok: false, error: 'geolocation_not_supported' });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          ok: true,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: Number.isFinite(position.coords.accuracy)
+            ? position.coords.accuracy
+            : null,
+        });
+      },
+      (error) => {
+        resolve({
+          ok: false,
+          error: getGeolocationErrorCode(error),
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 30000,
+      }
+    );
+  });
+}
+
 export default function MedicoCheckinPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -98,7 +197,7 @@ export default function MedicoCheckinPage() {
   const loadAllHospitalsData = useCallback(async (uId: string) => {
     const { data: shiftData, error: shiftErr } = await supabase
       .from('shifts')
-      .select('id, date, period, doctor_user_id, is_chief, hospitals(name, is_checkin_enabled)')
+      .select('id, date, period, doctor_user_id, is_chief, hospitals(name, is_checkin_enabled, latitude, longitude, geofence_radius, checkin_geofence_enforced)')
       .eq('date', date)
       .eq('doctor_user_id', uId)
       .order('period', { ascending: true });
@@ -128,20 +227,108 @@ export default function MedicoCheckinPage() {
     init();
   }, [router, loadAllHospitalsData]);
 
-  async function doCheckin(shiftId: number) {
+  async function doCheckin(shift: ShiftRow) {
     try {
-      setBusyShiftId(shiftId);
+      setBusyShiftId(shift.id);
       setErrorMsg(null);
+
+      if (hasConfiguredGeofence(shift.hospitals)) {
+        const enforced = isGeofenceEnforced(shift.hospitals);
+        const geo = await getCurrentPosition();
+
+        if (enforced && !geo.ok) {
+          setErrorMsg(LOCATION_REQUIRED_MESSAGE);
+          return;
+        }
+
+        if (
+          enforced &&
+          geo.ok &&
+          shift.hospitals?.latitude != null &&
+          shift.hospitals?.longitude != null
+        ) {
+          const radius = shift.hospitals.geofence_radius ?? 200;
+          const accuracyBuffer = Math.min(geo.accuracy ?? 0, 50);
+          const distance = distanceMeters(
+            geo.latitude,
+            geo.longitude,
+            shift.hospitals.latitude,
+            shift.hospitals.longitude
+          );
+
+          if (distance > radius + accuracyBuffer) {
+            setErrorMsg(
+              `Você está fora da área permitida para check-in neste hospital. Distância aproximada: ${Math.round(
+                distance
+              )} m. Raio permitido: ${radius} m.`
+            );
+            return;
+          }
+        }
+
+        const { error: v2Error } = await supabase.rpc('create_shift_checkin_v2', {
+          p_shift_id: shift.id,
+          p_source: 'web',
+          p_method: geo.ok ? 'gps' : 'button',
+          p_checkin_latitude: geo.ok ? geo.latitude : null,
+          p_checkin_longitude: geo.ok ? geo.longitude : null,
+          p_checkin_accuracy_meters: geo.ok ? geo.accuracy : null,
+          p_geolocation_error: geo.ok ? null : geo.error,
+        });
+
+        if (v2Error) {
+          if (v2Error.message?.includes('CHECKIN_GPS_REQUIRED')) {
+            setErrorMsg(LOCATION_REQUIRED_MESSAGE);
+            return;
+          }
+
+          if (v2Error.message?.includes('CHECKIN_OUTSIDE_GEOFENCE')) {
+            setErrorMsg(
+              'Você está fora da área permitida para check-in neste hospital.'
+            );
+            return;
+          }
+
+          if (enforced) {
+            throw v2Error;
+          }
+
+          console.error('Erro na create_shift_checkin_v2. Usando fallback antigo:', v2Error);
+          const { error: fallbackError } = await supabase.rpc('create_shift_checkin', {
+            p_shift_id: shift.id,
+            p_source: 'web',
+            p_method: 'button',
+          });
+
+          if (fallbackError) {
+            throw fallbackError;
+          }
+        }
+
+        if (userId) {
+          await loadAllHospitalsData(userId);
+        }
+
+        return;
+      }
+
       const { error } = await supabase.rpc('create_shift_checkin', {
-        p_shift_id: shiftId,
+        p_shift_id: shift.id,
         p_source: 'web',
         p_method: 'button',
       });
       if (error) {
-        setErrorMsg(error.message);
-      } else if (userId) {
+        throw error;
+      }
+      if (userId) {
         await loadAllHospitalsData(userId);
       }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível registrar sua entrada.';
+      setErrorMsg(message);
     } finally {
       setBusyShiftId(null);
     }
@@ -200,7 +387,7 @@ export default function MedicoCheckinPage() {
                     </div>
                   ) : timing.state === 'na_janela' ? (
                     <button
-                      onClick={() => doCheckin(s.id)}
+                      onClick={() => doCheckin(s)}
                       disabled={busyShiftId === s.id}
                       className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50"
                     >
