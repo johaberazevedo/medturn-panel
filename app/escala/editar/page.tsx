@@ -35,7 +35,22 @@ type AvailabilityRow = {
   period: PeriodKey;
 };
 
+type ActiveSwapRequest = {
+  id: number;
+  from_shift_id: number;
+  target_user_id: string | null;
+  reason: string | null;
+};
+
 const ALLOWED_PERIODS: PeriodKey[] = ["manha", "tarde", "noite"];
+
+const ACTIVE_SWAP_MESSAGE =
+  "Este plantão está anunciado no momento. Cancele o anúncio antes de alterar o médico ou remover o plantão.";
+const AWAITING_COORDINATION_MESSAGE =
+  "Este anúncio já foi aceito. Confirme ou rejeite a solicitação no painel de Solicitações antes de alterar o plantão.";
+const PROTECTION_CHECK_FAILED_MESSAGE =
+  "Não foi possível verificar se existem ofertas ou solicitações ativas. Atualize a página e tente novamente.";
+const ADMIN_CANCEL_CONFIRMATION = "CANCELAR ANUNCIO DO PLANTAO";
 
 const PERIODS: {
   key: PeriodKey;
@@ -61,6 +76,14 @@ function EditarPlantaoContent() {
   const [hospitalName, setHospitalName] = useState<string>("Hospital");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [protectedShiftIds, setProtectedShiftIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [cancellableRequestIdsByShiftId, setCancellableRequestIdsByShiftId] =
+    useState<Map<number, number[]>>(new Map());
+  const [cancellingShiftId, setCancellingShiftId] = useState<number | null>(
+    null,
+  );
 
   // PATCH: controla se o input do badge está “aberto” por linha
   const [badgeOpen, setBadgeOpen] = useState<Record<string, boolean>>({});
@@ -86,6 +109,12 @@ function EditarPlantaoContent() {
       a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
     );
   }, [doctors]);
+
+  function protectedShiftMessage(shiftId: number) {
+    return cancellableRequestIdsByShiftId.has(shiftId)
+      ? ACTIVE_SWAP_MESSAGE
+      : AWAITING_COORDINATION_MESSAGE;
+  }
 
   if (!dateParam) {
     return <div>Data inválida.</div>;
@@ -195,6 +224,55 @@ function EditarPlantaoContent() {
     setDoctors(mapped);
   }
 
+  function isAdministrativelyCancellable(request: ActiveSwapRequest) {
+    if (request.target_user_id !== null) {
+      return request.reason === "__direct_offer__";
+    }
+
+    return ![
+      "__direct_offer__",
+      "__direct_offer__accepted",
+      "__offer_via_disponibilidade__",
+    ].includes(request.reason ?? "");
+  }
+
+  async function fetchShiftSwapProtection(
+    shiftIds: number[],
+    hospital_id: string,
+  ) {
+    if (shiftIds.length === 0) {
+      return {
+        protectedIds: new Set<number>(),
+        cancellableIdsByShiftId: new Map<number, number[]>(),
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("shift_swap_requests")
+      .select("id, from_shift_id, target_user_id, reason")
+      .eq("hospital_id", hospital_id)
+      .in("from_shift_id", shiftIds)
+      .in("status", ["pendente", "pending"]);
+
+    if (error) throw new Error(PROTECTION_CHECK_FAILED_MESSAGE);
+
+    const requests = (data ?? []) as ActiveSwapRequest[];
+    const cancellableIdsByShiftId = new Map<number, number[]>();
+
+    for (const request of requests) {
+      if (!isAdministrativelyCancellable(request)) continue;
+
+      const requestIds = cancellableIdsByShiftId.get(request.from_shift_id) ?? [];
+      requestIds.push(request.id);
+      cancellableIdsByShiftId.set(request.from_shift_id, requestIds);
+    }
+
+    return {
+      protectedIds: new Set(requests.map((request) => request.from_shift_id)),
+      cancellableIdsByShiftId,
+    };
+  }
+
   async function loadShiftsForDay(hospital_id: string) {
     const { data, error } = await supabase
       .from("shifts")
@@ -208,6 +286,21 @@ function EditarPlantaoContent() {
     }
 
     const rows = (data ?? []) as ShiftRow[];
+
+    try {
+      const protection = await fetchShiftSwapProtection(
+        rows.map((row) => row.id),
+        hospital_id,
+      );
+      setProtectedShiftIds(protection.protectedIds);
+      setCancellableRequestIdsByShiftId(
+        protection.cancellableIdsByShiftId,
+      );
+    } catch {
+      setProtectedShiftIds(new Set());
+      setCancellableRequestIdsByShiftId(new Map());
+      setErrorMsg(PROTECTION_CHECK_FAILED_MESSAGE);
+    }
 
     const mapToState = (periodKey: string): ShiftSlot[] => {
       const filtered = rows.filter((r) => r.period === periodKey);
@@ -226,6 +319,105 @@ function EditarPlantaoContent() {
     setManhaDoctors(mapToState("manha"));
     setTardeDoctors(mapToState("tarde"));
     setNoiteDoctors(mapToState("noite"));
+  }
+
+  async function refreshShiftSwapProtection(shiftId: number) {
+    if (!hospitalId) throw new Error(PROTECTION_CHECK_FAILED_MESSAGE);
+
+    const protection = await fetchShiftSwapProtection([shiftId], hospitalId);
+
+    setProtectedShiftIds((current) => {
+      const next = new Set(current);
+      next.delete(shiftId);
+      if (protection.protectedIds.has(shiftId)) next.add(shiftId);
+      return next;
+    });
+
+    setCancellableRequestIdsByShiftId((current) => {
+      const next = new Map(current);
+      next.delete(shiftId);
+      const requestIds = protection.cancellableIdsByShiftId.get(shiftId);
+      if (requestIds?.length) next.set(shiftId, requestIds);
+      return next;
+    });
+
+    return protection;
+  }
+
+  async function handleAdministrativeCancellation(
+    slot: ShiftSlot,
+    period: PeriodKey,
+  ) {
+    if (!hospitalId || slot.shiftId === null) return;
+
+    const requestId = cancellableRequestIdsByShiftId.get(slot.shiftId)?.[0];
+    if (!requestId) return;
+
+    const doctorName =
+      doctors.find((doctor) => doctor.id === slot.userId)?.name ??
+      "Médico não identificado";
+    const periodLabel = PERIODS.find((item) => item.key === period)?.label ?? period;
+    const typedValue = window.prompt(
+      `Cancelar somente o anúncio deste plantão?\n\nHospital: ${hospitalName}\nData: ${formattedDate}\nPeríodo: ${periodLabel}\nMédico atual: ${doctorName}\n\nEsta ação cancela somente o anúncio e não remove o plantão da escala. O cancelamento ficará registrado, e os usuários envolvidos serão notificados pelo sistema.\n\nPara confirmar, digite: ${ADMIN_CANCEL_CONFIRMATION}`,
+    );
+
+    if (typedValue === null) return;
+
+    if (typedValue.trim().toUpperCase() !== ADMIN_CANCEL_CONFIRMATION) {
+      setErrorMsg(
+        "Frase de confirmação incorreta. O anúncio não foi cancelado.",
+      );
+      return;
+    }
+
+    setCancellingShiftId(slot.shiftId);
+    setErrorMsg(null);
+
+    try {
+      const { error } = await supabase.rpc(
+        "cancel_shift_swap_as_hospital_admin",
+        {
+          p_request_id: requestId,
+          p_shift_id: slot.shiftId,
+          p_hospital_id: hospitalId,
+        },
+      );
+
+      if (error) {
+        const message = error.message ?? "";
+        try {
+          await refreshShiftSwapProtection(slot.shiftId);
+        } catch {
+          setErrorMsg(PROTECTION_CHECK_FAILED_MESSAGE);
+          return;
+        }
+
+        setErrorMsg(
+          message.includes("admin_required")
+            ? "Você não possui permissão para cancelar este anúncio."
+            : message.includes("request_not_cancelable")
+              ? "Este anúncio mudou de situação e não pode mais ser cancelado por aqui. Verifique as solicitações pendentes."
+              : "Não foi possível cancelar o anúncio com segurança. Atualize a página e tente novamente.",
+        );
+        return;
+      }
+
+      const protection = await refreshShiftSwapProtection(slot.shiftId);
+      if (protection.protectedIds.has(slot.shiftId)) {
+        setErrorMsg(
+          "O anúncio foi cancelado, mas existe outra solicitação ativa para este plantão.",
+        );
+        return;
+      }
+
+      window.alert("Anúncio cancelado. O plantão está liberado para alteração.");
+    } catch {
+      setErrorMsg(
+        "Não foi possível cancelar o anúncio com segurança. Atualize a página e tente novamente.",
+      );
+    } finally {
+      setCancellingShiftId(null);
+    }
   }
 
   async function loadAvailabilityForDay(hospital_id: string) {
@@ -298,6 +490,15 @@ function EditarPlantaoContent() {
     newUserId: string,
   ) {
     const update = (arr: ShiftSlot[], setArr: (v: ShiftSlot[]) => void) => {
+      const slot = arr[index];
+      if (
+        slot.shiftId !== null &&
+        protectedShiftIds.has(slot.shiftId)
+      ) {
+        setErrorMsg(protectedShiftMessage(slot.shiftId));
+        return;
+      }
+
       const copy = [...arr];
       copy[index] = { ...copy[index], userId: newUserId };
       setArr(copy);
@@ -416,6 +617,15 @@ function EditarPlantaoContent() {
 
   function handleRemoveDoctor(period: PeriodKey, index: number) {
     const removeFrom = (arr: ShiftSlot[], setArr: (v: ShiftSlot[]) => void) => {
+      const slot = arr[index];
+      if (
+        slot.shiftId !== null &&
+        protectedShiftIds.has(slot.shiftId)
+      ) {
+        setErrorMsg(protectedShiftMessage(slot.shiftId));
+        return;
+      }
+
       const copy = [...arr];
       copy.splice(index, 1);
       if (copy.length === 0) {
@@ -439,6 +649,16 @@ function EditarPlantaoContent() {
 
   function handleClearAll() {
     if (!hospitalId) return;
+    if (protectedShiftIds.size > 0) {
+      setErrorMsg(
+        [...protectedShiftIds].some(
+          (shiftId) => !cancellableRequestIdsByShiftId.has(shiftId),
+        )
+          ? AWAITING_COORDINATION_MESSAGE
+          : ACTIVE_SWAP_MESSAGE,
+      );
+      return;
+    }
 
     setManhaDoctors([{ shiftId: null, userId: "", isChief: false, badge: "" }]);
     setTardeDoctors([{ shiftId: null, userId: "", isChief: false, badge: "" }]);
@@ -506,8 +726,45 @@ function EditarPlantaoContent() {
     // 2) Monta o “desejado” a partir do estado
     const desired = buildDesiredRows(dateStr);
 
+    const desiredById = new Map(
+      desired
+        .filter((row) => row.shiftId !== null)
+        .map((row) => [row.shiftId as number, row]),
+    );
+    const structurallyChangedIds = existingRows
+      .filter((row) => {
+        if (!isAllowedPeriod(row.period)) return false;
+
+        const desiredRow = desiredById.get(row.id);
+        return (
+          !desiredRow ||
+          desiredRow.doctor_user_id !== row.doctor_user_id ||
+          desiredRow.period !== row.period
+        );
+      })
+      .map((row) => row.id);
+
+    const latestProtection = await fetchShiftSwapProtection(
+      structurallyChangedIds,
+      hospitalId,
+    );
+
+    if (latestProtection.protectedIds.size > 0) {
+      setProtectedShiftIds((current) =>
+        new Set([...current, ...latestProtection.protectedIds]),
+      );
+      throw new Error(
+        [...latestProtection.protectedIds].some(
+          (shiftId) =>
+            !latestProtection.cancellableIdsByShiftId.has(shiftId),
+        )
+          ? AWAITING_COORDINATION_MESSAGE
+          : ACTIVE_SWAP_MESSAGE,
+      );
+    }
+
     // 3) Atualiza o que tem shiftId e insere o que não tem
-    const desiredIds = new Set<number>();
+    const desiredIds = new Set(desiredById.keys());
 
     for (const row of desired) {
       if (!isAllowedPeriod(row.period)) {
@@ -516,8 +773,6 @@ function EditarPlantaoContent() {
       }
 
       if (row.shiftId) {
-        desiredIds.add(row.shiftId);
-
         const { error: updErr } = await supabase
           .from("shifts")
           .update({
@@ -670,7 +925,14 @@ function EditarPlantaoContent() {
       // recarrega como você já fazia (bom porque re-hidrata shiftId e estado)
       router.replace(`/escala?date=${dateParam}&hospitalId=${hospitalId}`);
     } catch (err: any) {
-      setErrorMsg(`Erro ao salvar: ${err?.message ?? "desconhecido"}`);
+      const message = err?.message ?? "desconhecido";
+      setErrorMsg(
+        message === ACTIVE_SWAP_MESSAGE ||
+          message === AWAITING_COORDINATION_MESSAGE ||
+          message === PROTECTION_CHECK_FAILED_MESSAGE
+          ? message
+          : `Erro ao salvar: ${message}`,
+      );
       setSaving(false);
     }
   }
@@ -821,7 +1083,27 @@ function EditarPlantaoContent() {
 
                 <div className="flex flex-col gap-2.5">
                   {state.values.map((slot, index) => {
-                    const status = getAvailabilityStatus(slot.userId, p.key);
+                    const isProtected =
+                      slot.shiftId !== null &&
+                      protectedShiftIds.has(slot.shiftId);
+                    const canCancelAnnouncement =
+                      slot.shiftId !== null &&
+                      (cancellableRequestIdsByShiftId.get(slot.shiftId)
+                        ?.length ?? 0) > 0;
+                    const protectionMessage =
+                      slot.shiftId !== null
+                        ? protectedShiftMessage(slot.shiftId)
+                        : ACTIVE_SWAP_MESSAGE;
+                    const status = isProtected
+                      ? {
+                          label: canCancelAnnouncement
+                            ? "Plantão anunciado"
+                            : "Aguardando coordenação",
+                          className: canCancelAnnouncement
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-sky-50 text-sky-700 border-sky-100",
+                        }
+                      : getAvailabilityStatus(slot.userId, p.key);
 
                     return (
                       <div
@@ -830,8 +1112,10 @@ function EditarPlantaoContent() {
                       >
                         <div className="min-w-0 flex-1">
                           <select
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#40C0A2]"
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#40C0A2] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                             value={slot.userId}
+                            disabled={isProtected}
+                            title={isProtected ? protectionMessage : undefined}
                             onChange={(e) =>
                               handleDoctorChange(p.key, index, e.target.value)
                             }
@@ -846,6 +1130,22 @@ function EditarPlantaoContent() {
                         </div>
 
                         <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                          {canCancelAnnouncement && slot.shiftId !== null && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAdministrativeCancellation(slot, p.key)
+                              }
+                              disabled={cancellingShiftId === slot.shiftId}
+                              className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[9px] font-black uppercase text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Cancelar administrativamente este anúncio"
+                            >
+                              {cancellingShiftId === slot.shiftId
+                                ? "Cancelando..."
+                                : "Cancelar anúncio"}
+                            </button>
+                          )}
+
                           {badgeOpen[badgeKey(p.key, index)] ? (
                             <label
                               title="Badge (até 4)"
@@ -917,11 +1217,15 @@ function EditarPlantaoContent() {
                           {status ? (
                             <span
                               className={`whitespace-nowrap rounded-2xl border px-2.5 py-2 text-[9px] font-bold ${status.className}`}
-                              title={status.label}
+                              title={
+                                isProtected ? protectionMessage : status.label
+                              }
                             >
-                              {status.label === "Disponível"
-                                ? "Disp."
-                                : status.label}
+                              {isProtected
+                                ? status.label
+                                : status.label === "Disponível"
+                                  ? "Disp."
+                                  : status.label}
                             </span>
                           ) : (
                             <span className="select-none px-1 text-[9px] text-slate-300">
@@ -932,9 +1236,14 @@ function EditarPlantaoContent() {
                           {(state.values.length > 1 || slot.userId !== "") && (
                             <button
                               type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 transition hover:border-red-200 hover:text-red-500"
+                              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 transition hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                               onClick={() => handleRemoveDoctor(p.key, index)}
-                              title="Remover vaga / Limpar"
+                              disabled={isProtected}
+                              title={
+                                isProtected
+                                  ? protectionMessage
+                                  : "Remover vaga / Limpar"
+                              }
                             >
                               <span className="text-sm font-black">×</span>
                             </button>
@@ -963,6 +1272,16 @@ function EditarPlantaoContent() {
               type="button"
               onClick={handleClearAll}
               disabled={saving}
+              title={
+                protectedShiftIds.size > 0
+                  ? [...protectedShiftIds].some(
+                      (shiftId) =>
+                        !cancellableRequestIdsByShiftId.has(shiftId),
+                    )
+                    ? AWAITING_COORDINATION_MESSAGE
+                    : ACTIVE_SWAP_MESSAGE
+                  : "Limpar todos os plantões do dia"
+              }
               className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
             >
               Limpar dia

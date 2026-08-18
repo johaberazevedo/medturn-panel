@@ -24,6 +24,8 @@ type SwapRowRaw = {
   reason: string | null;
   created_at: string | null;
   updated_at: string | null;
+  handled_at: string | null;
+  handled_by_user_id: string | null;
   requester_user_id: string | null;
   target_user_id: string | null;
   from_shift_id: number | null;
@@ -31,6 +33,7 @@ type SwapRowRaw = {
 
   requester?: { full_name: string | null } | { full_name: string | null }[] | null;
   target?: { full_name: string | null } | { full_name: string | null }[] | null;
+  handler?: { full_name: string | null } | { full_name: string | null }[] | null;
   hospital?: { name: string | null } | { name: string | null }[] | null;
   shift?:
     | {
@@ -52,6 +55,9 @@ type SwapLogRow = {
   reason: string | null;
   created_at: string | null;
   updated_at: string | null;
+  handled_at: string | null;
+  handled_by_user_id: string | null;
+  handler_name: string;
 
   requester_user_id: string | null;
   requester_name: string;
@@ -173,6 +179,12 @@ function statusClasses(status: string) {
   }
 }
 
+function statusLabel(row: SwapLogRow) {
+  return row.status === 'cancelado' && row.handled_at
+    ? 'Cancelado pela coordenação'
+    : row.status;
+}
+
 function normalizeName(name: string | null | undefined, fallback = '—') {
   return name?.trim() || fallback;
 }
@@ -206,10 +218,11 @@ export default function TrocasLogPage() {
         const { data, error } = await supabase
           .from('shift_swap_requests')
           .select(`
-            id, status, reason, created_at, updated_at,
+            id, status, reason, created_at, updated_at, handled_at, handled_by_user_id,
             requester_user_id, target_user_id, from_shift_id, hospital_id,
             requester:requester_user_id(full_name),
             target:target_user_id(full_name),
+            handler:handled_by_user_id(full_name),
             hospital:hospital_id(name),
             shift:from_shift_id(date, period, doctor_user_id)
           `)
@@ -243,6 +256,7 @@ export default function TrocasLogPage() {
           .map((r) => {
             const requester = firstObj(r.requester);
             const target = firstObj(r.target);
+            const handler = firstObj(r.handler);
             const hospital = firstObj(r.hospital);
             const shift = firstObj(r.shift);
             const currentShiftOwnerId = shift?.doctor_user_id ?? null;
@@ -254,6 +268,14 @@ export default function TrocasLogPage() {
               reason: r.reason,
               created_at: r.created_at,
               updated_at: r.updated_at,
+              handled_at: r.handled_at,
+              handled_by_user_id: r.handled_by_user_id,
+              handler_name: normalizeName(
+                handler?.full_name,
+                r.status === 'cancelado' && r.handled_at
+                  ? 'Usuário removido'
+                  : '—'
+              ),
               requester_user_id: r.requester_user_id,
               requester_name: normalizeName(requester?.full_name),
               target_user_id: r.target_user_id,
@@ -336,6 +358,7 @@ const monthScopedRows = useMemo(() => {
         r.requester_name,
         r.target_name,
         r.current_shift_owner_name,
+        r.handler_name,
         r.status,
         r.situacao_log,
         r.reason ?? '',
@@ -453,7 +476,7 @@ const monthScopedRows = useMemo(() => {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge className={statusClasses(row.status)}>{row.status}</Badge>
+                    <Badge className={statusClasses(row.status)}>{statusLabel(row)}</Badge>
                     <Badge className={situacaoClasses(row.situacao_log)}>{situacaoLabel(row.situacao_log)}</Badge>
                   </div>
                 </div>
@@ -468,6 +491,13 @@ const monthScopedRows = useMemo(() => {
                   <InfoItem label="Criado em" value={formatDateTime(row.created_at)} />
                   <InfoItem label="Última atualização" value={formatDateTime(row.updated_at)} />
                 </div>
+
+                {row.status === 'cancelado' && row.handled_at && (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <InfoItem label="Processado por" value={row.handler_name} />
+                    <InfoItem label="Processado em" value={formatDateTime(row.handled_at)} />
+                  </div>
+                )}
 
                 {row.reason && (
                   <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">

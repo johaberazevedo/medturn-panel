@@ -251,15 +251,53 @@ function isAwaitingCoordination(r: ShiftSwapNotification) {
   );
 }
 
+function coordinationUrgency(r: ShiftSwapNotification) {
+  if (!isAwaitingCoordination(r) || !r.shift?.date) return null;
+
+  const today = new Date();
+  const todayYMD = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
+    today.getDate(),
+  ).padStart(2, '0')}`;
+  const tomorrowYMD = getTomorrowYMD();
+
+  if (r.shift.date < todayYMD) {
+    return {
+      label: 'Plantão vencido',
+      className: 'bg-red-50 text-red-700 border-red-200',
+    };
+  }
+  if (r.shift.date === todayYMD) {
+    return {
+      label: 'Plantão hoje',
+      className: 'bg-red-50 text-red-700 border-red-200',
+    };
+  }
+  if (r.shift.date === tomorrowYMD) {
+    return {
+      label: 'Plantão amanhã',
+      className: 'bg-amber-50 text-amber-700 border-amber-200',
+    };
+  }
+
+  return null;
+}
+
 function visualStatusLabel(r: ShiftSwapNotification) {
   if (isDirectOfferPending(r)) return 'Oferta direcionada';
-  if (isAwaitingCoordination(r)) return 'Em processo';
+  if (isAwaitingCoordination(r)) {
+    return coordinationUrgency(r)?.label ?? 'Aguardando coordenação';
+  }
   return statusLabel(r.status);
 }
 
 function visualStatusChipClass(r: ShiftSwapNotification) {
   if (isDirectOfferPending(r)) return 'bg-blue-50 text-blue-700 border-blue-200';
-  if (isAwaitingCoordination(r)) return 'bg-sky-50 text-sky-700 border-sky-200';
+  if (isAwaitingCoordination(r)) {
+    return (
+      coordinationUrgency(r)?.className ??
+      'bg-sky-50 text-sky-700 border-sky-200'
+    );
+  }
   return statusChipClass(r.status);
 }
 
@@ -631,10 +669,6 @@ const loadSwapRequests = useCallback(async (hId: string, silent = false) => {
   }
 
   try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const dateLimit = thirtyDaysAgo.toISOString().split('T')[0];
-
     const { data, error } = await supabase
       .from('shift_swap_requests')
       .select(`
@@ -644,12 +678,19 @@ const loadSwapRequests = useCallback(async (hId: string, silent = false) => {
         shift:from_shift_id!inner(date, period, doctor_user_id, doctor:doctor_user_id(full_name, email))
       `)
       .eq('hospital_id', hId)
-      .eq('status', 'pendente')
-      .gte('shift.date', dateLimit)
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .eq('status', 'pendente');
 
     if (!error) {
+      const periodPriority: Record<LegacyPeriodKey, number> = {
+        manha: 0,
+        tarde: 1,
+        noite: 2,
+        '24h': 3,
+      };
+      const awaitingCoordination = (request: ShiftSwapNotification) =>
+        ['pendente', 'pending'].includes(request.status) &&
+        request.target_user_id !== null &&
+        request.reason !== '__direct_offer__';
       const formattedSwaps = (data ?? []).map((item: any) => {
         let shiftObj = Array.isArray(item.shift) ? item.shift[0] : item.shift;
 
@@ -665,14 +706,27 @@ const loadSwapRequests = useCallback(async (hId: string, silent = false) => {
         };
       });
 
-      const sortedSwaps = formattedSwaps.sort((a, b) => {
-        const aAwaiting = isAwaitingCoordination(a);
-        const bAwaiting = isAwaitingCoordination(b);
+      const sortedSwaps = (formattedSwaps as ShiftSwapNotification[]).sort((a, b) => {
+        const aAwaiting = awaitingCoordination(a);
+        const bAwaiting = awaitingCoordination(b);
 
         if (aAwaiting && !bAwaiting) return -1;
         if (!aAwaiting && bAwaiting) return 1;
 
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const dateComparison = (a.shift?.date ?? '9999-12-31').localeCompare(
+          b.shift?.date ?? '9999-12-31',
+        );
+        if (dateComparison !== 0) return dateComparison;
+
+        const periodComparison =
+          periodPriority[a.shift?.period ?? '24h'] -
+          periodPriority[b.shift?.period ?? '24h'];
+        if (periodComparison !== 0) return periodComparison;
+
+        const createdComparison =
+          new Date(a.created_at).getTime() -
+          new Date(b.created_at).getTime();
+        return createdComparison !== 0 ? createdComparison : a.id - b.id;
       });
 
       setSwapRequests(sortedSwaps as ShiftSwapNotification[]);
@@ -1110,6 +1164,10 @@ async function openMessageModal() {
   const coordinationPendingSwaps = swapRequests.filter((request) =>
   isAwaitingCoordination(request)
 );
+  const prioritySwap = coordinationPendingSwaps[0] ?? null;
+  const priorityUrgency = prioritySwap
+    ? coordinationUrgency(prioritySwap)
+    : null;
 
   return (
     <>
@@ -1398,7 +1456,9 @@ async function openMessageModal() {
         {conflictCount > 0
           ? `${conflictCount} conflito(s) detectado(s)`
           : coordinationPendingSwaps.length > 0
-          ? `${coordinationPendingSwaps.length} troca(s) aguardando confirmação`
+          ? priorityUrgency
+            ? `${priorityUrgency.label} aguardando confirmação`
+            : `${coordinationPendingSwaps.length} troca(s) aguardando confirmação`
           : 'Sem pendências no momento'}
       </h2>
 
