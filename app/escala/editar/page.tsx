@@ -101,7 +101,7 @@ function EditarPlantaoContent() {
     { shiftId: null, userId: "", isChief: false, badge: "" },
   ]);
 
-  const [copyTargetDate, setCopyTargetDate] = useState<string>("");
+  const [copyTargetDate, setCopyTargetDate] = useState<string>(dateParam ?? "");
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
 
   const sortedDoctors = useMemo(() => {
@@ -823,7 +823,7 @@ function EditarPlantaoContent() {
   }
 
   async function copyShiftsToDate(targetDate: string) {
-    if (!hospitalId) return;
+    if (!hospitalId) return false;
 
     // 1) Carrega o que existe no destino
     const { data: existing, error: loadErr } = await supabase
@@ -861,8 +861,44 @@ function EditarPlantaoContent() {
     const desiredKeys = new Set<string>();
 
     for (const r of desired) {
+      desiredKeys.add(
+        key({ period: r.period, doctor_user_id: r.doctor_user_id }),
+      );
+    }
+
+    const toDeleteIds = existingRows
+      .filter((r) =>
+        !desiredKeys.has(
+          key({
+            period: r.period,
+            doctor_user_id: r.doctor_user_id ?? "",
+          }),
+        ),
+      )
+      .map((r) => r.id);
+
+    if (
+      existingRows.length > 0 &&
+      !window.confirm(
+        "A data de destino já possui plantões. Ao continuar, a escala dessa data será substituída pela escala exibida nesta tela. Plantões diferentes no destino serão removidos. Deseja continuar?",
+      )
+    ) {
+      return false;
+    }
+
+    const protection = await fetchShiftSwapProtection(
+      toDeleteIds,
+      hospitalId,
+    );
+
+    if (protection.protectedIds.size > 0) {
+      throw new Error(
+        "Não foi possível copiar a escala porque existem plantões anunciados ou solicitações ativas na data de destino que seriam alterados. Cancele ou resolva essas solicitações antes de copiar novamente.",
+      );
+    }
+
+    for (const r of desired) {
       const k = key({ period: r.period, doctor_user_id: r.doctor_user_id });
-      desiredKeys.add(k);
 
       const match = existingByKey.get(k);
 
@@ -894,15 +930,6 @@ function EditarPlantaoContent() {
     }
 
     // remover do destino o que não está mais no desired
-    const toDeleteIds: number[] = [];
-    for (const r of existingRows) {
-      const k = key({
-        period: r.period,
-        doctor_user_id: r.doctor_user_id ?? "",
-      });
-      if (!desiredKeys.has(k)) toDeleteIds.push(r.id);
-    }
-
     if (toDeleteIds.length > 0) {
       const { error: delErr } = await supabase
         .from("shifts")
@@ -912,6 +939,8 @@ function EditarPlantaoContent() {
 
       if (delErr) throw delErr;
     }
+
+    return true;
   }
 
   async function handleSave() {
@@ -943,13 +972,22 @@ function EditarPlantaoContent() {
       setErrorMsg("Informe a data de destino para copiar a escala.");
       return;
     }
+    if (copyTargetDate === dateParam) {
+      setErrorMsg("Escolha uma data de destino diferente da data atual.");
+      return;
+    }
 
     setSaving(true);
     setErrorMsg(null);
 
     try {
       // Estratégia: copiar o “desejado” do dia atual para o destino
-      await copyShiftsToDate(copyTargetDate);
+      const copied = await copyShiftsToDate(copyTargetDate);
+
+      if (!copied) {
+        setSaving(false);
+        return;
+      }
 
       setSaving(false);
       alert("Copiado com sucesso!");
